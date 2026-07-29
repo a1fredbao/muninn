@@ -1,2 +1,3 @@
-# reciting
-Extendable reciting utility.
+# Muninn
+
+An extendable reciting utility.
