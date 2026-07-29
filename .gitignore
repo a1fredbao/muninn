@@ -217,7 +217,4 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# my example package
-chemistry/
-
 .github/workflows/publish.yml
