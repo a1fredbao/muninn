@@ -1,12 +1,10 @@
 # Muninn
 
-Muninn (雾尼) - 高度可扩展的背诵/记忆命令行工具。
-
-[English Readme](./README.md)
+Muninn (雾尼) - 高度可扩展的背诵/记忆命令行工具
 
 ## Muninn 是什么？
 
-Muninn 是一个高度可扩展的命令行背诵软件，名字取自北欧神话中代表“记忆”的乌鸦雾尼。它不包含任何硬编码的题目，而是采用了 **“宿主-插件 (Host-Plugin)” 架构**。你可以自由导入别人编写的“题库包”（比如化学元素表、GRE 单词、古诗文等），也可以自己使用 Python 轻松开发题库。
+Muninn 是一个高度可扩展的命令行背诵软件，名字取自北欧神话中代表“记忆”的乌鸦雾尼。它不包含任何硬编码的题目，而是采用了**“宿主-插件 (Host-Plugin)” 架构**。你可以自由导入别人编写的“题库包”（比如化学元素表、GRE 单词、古诗文等），也可以自己使用 Python 轻松开发题库。
 
 Muninn 作为“宿主”，为你提供了开箱即用的三大能力：
 
@@ -16,27 +14,30 @@ Muninn 作为“宿主”，为你提供了开箱即用的三大能力：
 
 ## 安装与使用
 
-Muninn 使用 [`uv`](https://github.com/astral-sh/uv) 作为包管理工具，请确保你的系统中已安装了 `uv`。
+我们推荐使用 `uv` 来全局安装 Muninn：
 
 ```bash
-# 首次运行请同步依赖
-uv sync
+# 使用 uv 安装 (推荐)
+uv tool install muninn
+
+# 或者使用 pip 安装
+pip install muninn
 ```
 
 基础命令：
 
 ```bash
 # 查看所有已导入的题库包
-uv run muninn list
+muninn list
 
 # 导入一个外部题库包 (支持本地文件夹或 .zip 压缩包)
-uv run muninn import path/to/pack_or_zip
+muninn import path/to/pack_or_zip
 
 # 运行指定的题库
-uv run muninn run <pack_id>
+muninn run <pack_id>
 
 # 生成一个新的题库开发模板
-uv run muninn new <your_new_pack_id>
+muninn new <your_new_pack_id>
 ```
 
 ## 插件开发指南
@@ -46,7 +47,7 @@ uv run muninn new <your_new_pack_id>
 1. **生成开发模板**：
 
    ```bash
-   uv run muninn new my_cool_pack
+   muninn new my_cool_pack
    ```
 
    这会在当前目录下生成一个 `my_cool_pack` 文件夹，里面包含 `manifest.json` 和 `plugin.py`。
@@ -68,6 +69,6 @@ uv run muninn new <your_new_pack_id>
    当你写完逻辑后，直接使用 import 导入它即可开始你的背诵之旅：
 
    ```bash
-   uv run muninn import ./my_cool_pack
-   uv run muninn run my_cool_pack
+   muninn import ./my_cool_pack
+   muninn run my_cool_pack
    ```

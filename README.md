@@ -14,29 +14,32 @@ Muninn acts as a "host" that provides:
 2. **Persistent State Management** (remembers your progress across sessions).
 3. A clean, distraction-free **Terminal UI**.
 
-## Installation & Usage
+### Installation & Usage
 
-Muninn uses [`uv`](https://github.com/astral-sh/uv) for dependency management. Make sure you have `uv` installed.
+Install Muninn globally using `uv` (recommended) or `pip`:
 
 ```bash
-# Clone the repository and enter the directory
-uv sync
+# Using uv (Recommended)
+uv tool install muninn
+
+# Or using pip
+pip install muninn
 ```
 
 Available commands:
 
 ```bash
 # List all imported packs
-uv run muninn list
+muninn list
 
 # Import a pack (supports directories or .zip files)
-uv run muninn import path/to/pack_or_zip
+muninn import path/to/pack_or_zip
 
 # Run a specific pack by ID
-uv run muninn run <pack_id>
+muninn run <pack_id>
 
 # Generate a new plugin template for development
-uv run muninn new <your_new_pack_id>
+muninn new <your_new_pack_id>
 ```
 
 ## Plugin Development Guide
@@ -46,7 +49,7 @@ Creating your own reciting pack is incredibly easy.
 1. **Generate a template**:
 
    ```bash
-   uv run muninn new my_cool_pack
+   muninn new my_cool_pack
    ```
 
    This will create a `my_cool_pack` directory containing `manifest.json` and `plugin.py`.
@@ -67,6 +70,6 @@ Creating your own reciting pack is incredibly easy.
 4. **Test and Import**:
 
    ```bash
-   uv run muninn import ./my_cool_pack
-   uv run muninn run my_cool_pack
+   muninn import ./my_cool_pack
+   muninn run my_cool_pack
    ```

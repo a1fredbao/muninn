@@ -8,3 +8,7 @@ dependencies = []
 
 [project.scripts]
 muninn = "src.main:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
