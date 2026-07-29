@@ -1,10 +1,9 @@
-import os
-import sys
-import shutil
-import zipfile
-import json
 import importlib.util
-from typing import Optional
+import json
+import os
+import shutil
+import sys
+import zipfile
 
 from ..core.base_plugin import BaseRecitePlugin
 
@@ -117,7 +116,7 @@ class Plugin(BaseRecitePlugin):
         # To allow plugins to easily import BaseRecitePlugin without knowing the exact package path,
         # we will alias our internal 'muninn.core' to just 'core' for the plugin's namespace if needed.
         # Actually, adding our 'src' directory to sys.path temporarily is an easy way.
-        src_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        src_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         sys.path.insert(0, src_dir)
 
         try:
@@ -132,8 +131,8 @@ class Plugin(BaseRecitePlugin):
                 attr = getattr(module, attr_name)
                 if (
                     isinstance(attr, type)
-                    and issubclass(attr, BaseRecitePlugin)
-                    and attr is not BaseRecitePlugin
+                    and any(b.__name__ == "BaseRecitePlugin" for b in attr.__mro__)
+                    and attr.__name__ != "BaseRecitePlugin"
                 ):
                     return attr(workspace_dir=pack_dir)
 
