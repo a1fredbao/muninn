@@ -219,3 +219,5 @@ __marimo__/
 
 # my example package
 chemistry/
+
+.github/workflows/publish.yml
