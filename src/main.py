@@ -1,5 +1,6 @@
 import argparse
 import sys
+import traceback
 
 from src.cli.manager import PackageManager
 from src.cli.runner import GameRunner
@@ -25,7 +26,7 @@ def main():
     )
 
     # Command: list
-    parser_list = subparsers.add_parser("list", help="List all imported packs")
+    subparsers.add_parser("list", help="List all imported packs")
 
     # Command: run
     parser_run = subparsers.add_parser("run", help="Run a reciting pack")
@@ -42,13 +43,13 @@ def main():
     if args.command == "new":
         try:
             manager.create_template(args.pack_id, args.dir)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"❌ Failed to create template: {e}")
 
     elif args.command == "import":
         try:
             manager.import_pack(args.path)
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"❌ Failed to import pack: {e}")
 
     elif args.command == "list":
@@ -67,10 +68,8 @@ def main():
             plugin = manager.load_plugin(args.pack_id)
             runner = GameRunner(args.pack_id, plugin)
             runner.run()
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             print(f"❌ Failed to run pack '{args.pack_id}': {e}")
-            import traceback
-
             traceback.print_exc()
 
 

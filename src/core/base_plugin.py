@@ -1,6 +1,3 @@
-import os
-
-
 class BaseRecitePlugin:
     def __init__(self, workspace_dir: str):
         """
@@ -12,7 +9,7 @@ class BaseRecitePlugin:
 
     def load_data(self):
         """加载 workspace_dir 中的静态数据，由子类实现"""
-        pass
+        raise NotImplementedError
 
     def get_all_problem_ids(self) -> list[str]:
         """返回题库中所有题目的唯一 ID，供 CLI 调度器建立索引和存档进度"""
