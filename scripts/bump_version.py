@@ -16,7 +16,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-
 ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = ROOT / "pyproject.toml"
 LOCKFILE = ROOT / "uv.lock"
@@ -60,12 +59,22 @@ def run(cmd: list[str], **kwargs) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Bump muninn-cli version")
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument("--patch", action="store_true", help="Bump patch (0.1.0 -> 0.1.1)")
-    group.add_argument("--minor", action="store_true", help="Bump minor (0.1.0 -> 0.2.0)")
-    group.add_argument("--major", action="store_true", help="Bump major (0.1.0 -> 1.0.0)")
-    group.add_argument("-v", "--version", type=str, help="Set exact version (e.g. 1.5.0)")
+    group.add_argument(
+        "--patch", action="store_true", help="Bump patch (0.1.0 -> 0.1.1)"
+    )
+    group.add_argument(
+        "--minor", action="store_true", help="Bump minor (0.1.0 -> 0.2.0)"
+    )
+    group.add_argument(
+        "--major", action="store_true", help="Bump major (0.1.0 -> 1.0.0)"
+    )
+    group.add_argument(
+        "-v", "--version", type=str, help="Set exact version (e.g. 1.5.0)"
+    )
     parser.add_argument("--push", action="store_true", help="Push tag after bumping")
-    parser.add_argument("--dry-run", action="store_true", help="Preview only, no changes")
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Preview only, no changes"
+    )
     args = parser.parse_args()
 
     old = read_version()
@@ -94,7 +103,14 @@ def main() -> None:
     print(f"✅ Regenerated {LOCKFILE.relative_to(ROOT)}")
 
     # 3. Commit both pyproject.toml and uv.lock
-    run(["git", "add", str(PYPROJECT.relative_to(ROOT)), str(LOCKFILE.relative_to(ROOT))])
+    run(
+        [
+            "git",
+            "add",
+            str(PYPROJECT.relative_to(ROOT)),
+            str(LOCKFILE.relative_to(ROOT)),
+        ]
+    )
     run(["git", "commit", "-m", f"chore: bump version to {new}"])
 
     # 4. Tag
