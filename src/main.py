@@ -17,16 +17,24 @@ def main():
         "--dir", type=str, default=".", help="Directory to create the template in"
     )
 
-    # Command: import
-    parser_import = subparsers.add_parser(
-        "import", help="Import a pack from a directory or zip file"
+    # Command: install
+    parser_install = subparsers.add_parser(
+        "install", help="Install a pack from a directory or zip file"
     )
-    parser_import.add_argument(
+    parser_install.add_argument(
         "path", type=str, help="Path to the pack directory or .zip file"
     )
 
+    # Command: uninstall
+    parser_uninstall = subparsers.add_parser(
+        "uninstall", help="Uninstall a previously installed pack"
+    )
+    parser_uninstall.add_argument(
+        "pack_id", type=str, help="The ID of the pack to uninstall"
+    )
+
     # Command: list
-    subparsers.add_parser("list", help="List all imported packs")
+    subparsers.add_parser("list", help="List all installed packs")
 
     # Command: run
     parser_run = subparsers.add_parser("run", help="Run a reciting pack")
@@ -46,16 +54,22 @@ def main():
         except Exception as e:  # noqa: BLE001
             print(f"❌ Failed to create template: {e}")
 
-    elif args.command == "import":
+    elif args.command == "install":
         try:
-            manager.import_pack(args.path)
+            manager.install_pack(args.path)
         except Exception as e:  # noqa: BLE001
-            print(f"❌ Failed to import pack: {e}")
+            print(f"❌ Failed to install pack: {e}")
+
+    elif args.command == "uninstall":
+        try:
+            manager.uninstall_pack(args.pack_id)
+        except Exception as e:  # noqa: BLE001
+            print(f"❌ Failed to uninstall pack: {e}")
 
     elif args.command == "list":
         packs = manager.list_packs()
         if not packs:
-            print("No packs imported yet. Use 'muninn import <path>' to add one.")
+            print("No packs installed yet. Use 'muninn install <path>' to add one.")
         else:
             print(f"=== Installed Packs ({len(packs)}) ===")
             for p in packs:

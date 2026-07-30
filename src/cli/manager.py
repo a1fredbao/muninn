@@ -34,39 +34,38 @@ class PackageManager:
         with open(os.path.join(pack_dir, "manifest.json"), "w", encoding="utf-8") as f:
             json.dump(manifest, f, indent=4, ensure_ascii=False)
 
-        # The template imports BaseRecitePlugin
-        # When loaded dynamically, we will inject 'core.base_plugin' into sys.modules
-        # so this import will resolve correctly.
-        plugin_code = """from core.base_plugin import BaseRecitePlugin
+        plugin_code = '''"""A minimal Muninn plugin using DataPlugin.
 
-class Plugin(BaseRecitePlugin):
-    def load_data(self):
-        # TODO: Load your static data here from self.workspace_dir
-        self.problems = ["1", "2"]
-
-    def get_all_problem_ids(self) -> list[str]:
-        return self.problems
-
-    def render_statement(self, problem_id: str) -> str:
-        return f"This is problem {problem_id}"
-
-    def check_answer(self, problem_id: str, user_input: str) -> bool:
-        return user_input.strip() == problem_id
-
-    def get_expected_display(self, problem_id: str) -> str:
-        return problem_id
+For flashcard-style packs (front/back), use FlashcardPlugin instead.
+For full control, use the BaseRecitePlugin interface directly.
 """
+from typing import ClassVar
+
+from core.helpers import (
+    DataPlugin,
+    Matchers,
+    QuestionType,
+)
+
+
+class Plugin(DataPlugin):
+    QUESTION_TYPES: ClassVar[list[QuestionType]] = [
+        # TODO: Define your question types here.
+        # Each QuestionType needs a label, statement, answer, and matcher.
+        # See the documentation for examples.
+    ]
+'''
         with open(os.path.join(pack_dir, "plugin.py"), "w", encoding="utf-8") as f:
             f.write(plugin_code)
 
         print(f"✅ Template created at {pack_dir}")
 
-    def import_pack(self, source_path: str) -> str:
-        """Import a pack from a directory or zip file."""
+    def install_pack(self, source_path: str) -> str:
+        """Install a pack from a directory or zip file."""
         if not os.path.exists(source_path):
             raise FileNotFoundError(f"Path not found: {source_path}")
 
-        temp_dir = os.path.join(self.packs_dir, ".temp_import")
+        temp_dir = os.path.join(self.packs_dir, ".temp_install")
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
 
@@ -100,8 +99,16 @@ class Plugin(BaseRecitePlugin):
             shutil.rmtree(target_dir)
 
         shutil.move(temp_dir, target_dir)
-        print(f"✅ Successfully imported pack '{pack_id}'")
+        print(f"✅ Successfully installed pack '{pack_id}'")
         return pack_id
+
+    def uninstall_pack(self, pack_id: str):
+        """Remove a pack from the local packs directory."""
+        pack_dir = self._get_pack_dir(pack_id)
+        if not os.path.exists(pack_dir):
+            raise FileNotFoundError(f"Pack '{pack_id}' is not installed.")
+        shutil.rmtree(pack_dir)
+        print(f"🗑️  Pack '{pack_id}' has been uninstalled.")
 
     def load_plugin(self, pack_id: str) -> BaseRecitePlugin:
         """Dynamically load the plugin.py from the pack_id directory."""
@@ -113,9 +120,6 @@ class Plugin(BaseRecitePlugin):
         if not os.path.exists(plugin_path):
             raise FileNotFoundError(f"plugin.py not found in {pack_id}.")
 
-        # To allow plugins to easily import BaseRecitePlugin without knowing the exact package path,
-        # we will alias our internal 'muninn.core' to just 'core' for the plugin's namespace if needed.
-        # Actually, adding our 'src' directory to sys.path temporarily is an easy way.
         src_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         sys.path.insert(0, src_dir)
 
@@ -131,6 +135,7 @@ class Plugin(BaseRecitePlugin):
                 attr = getattr(module, attr_name)
                 if (
                     isinstance(attr, type)
+                    and attr.__module__ == module.__name__
                     and any(b.__name__ == "BaseRecitePlugin" for b in attr.__mro__)
                     and attr.__name__ != "BaseRecitePlugin"
                 ):

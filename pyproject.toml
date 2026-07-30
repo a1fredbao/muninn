@@ -1,7 +1,7 @@
 [project]
 name = "muninn"
 version = "0.1.0"
-description = "Add your description here"
+description = "Muninn - The Extensible Reciting CLI"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = []
@@ -19,4 +19,9 @@ packages = ["src"]
 [dependency-groups]
 dev = [
     "ruff>=0.16.0",
+    "pytest>=8.0.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
