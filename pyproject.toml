@@ -4,10 +4,28 @@ version = "0.1.0"
 description = "Muninn - The Extensible Reciting CLI"
 readme = "README.md"
 requires-python = ">=3.12"
+license = { text = "MIT" }
+authors = [
+    { name = "Alfred", email = "your@email.com" }
+]
+keywords = ["cli", "recite", "memorize", "flashcard"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Education",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Education",
+]
 dependencies = []
 
 [project.scripts]
 muninn = "src.main:main"
+
+[project.urls]
+Repository = "https://github.com/<your-username>/muninn"
+Issues = "https://github.com/<your-username>/muninn/issues"
 
 [build-system]
 requires = ["hatchling"]
