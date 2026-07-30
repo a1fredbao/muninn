@@ -236,14 +236,16 @@ class Plugin(DataPlugin):
     def _install_remote(self, url: str) -> str:
         """Download a remote zip and install it."""
         print(f"⬇️  Downloading {url} ...")
-        temp_dir = tempfile.mkdtemp(dir=self.packs_dir, prefix=".temp_")
-        zip_path = os.path.join(temp_dir, "pack.zip")
+
+        # Download to a separate temporary file (not inside the staging directory)
+        zip_fd, zip_path = tempfile.mkstemp(suffix=".zip", prefix=".pack_")
+        temp_dir = None
 
         try:
             try:
                 with (
                     urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT) as resp,
-                    open(zip_path, "wb") as f,
+                    os.fdopen(zip_fd, "wb") as f,
                 ):
                     shutil.copyfileobj(resp, f)
             except Exception as exc:
@@ -255,6 +257,8 @@ class Plugin(DataPlugin):
                     "Make sure the URL points to a GitHub repository, not a web page."
                 )
 
+            # Create a clean staging directory for extraction
+            temp_dir = tempfile.mkdtemp(dir=self.packs_dir, prefix=".temp_")
             with zipfile.ZipFile(zip_path) as zf:
                 zf.extractall(temp_dir)
 
@@ -263,6 +267,10 @@ class Plugin(DataPlugin):
             print(f"✅ Successfully installed pack '{pack_id}'")
             return pack_id
         finally:
+            # Clean up the downloaded zip file
+            if os.path.exists(zip_path):
+                os.unlink(zip_path)
+            # Clean up staging directory on failure
             if temp_dir and os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
