@@ -1,13 +1,29 @@
 import argparse
 import sys
 import traceback
+from importlib.metadata import PackageNotFoundError, version
 
 from src.cli.manager import PackageManager
 from src.cli.runner import GameRunner
 
+try:
+    __version__ = version("muninn-cli")
+except PackageNotFoundError:
+    __version__ = "unknown"
+
 
 def main():
     parser = argparse.ArgumentParser(description="Muninn - The Extensible Reciting CLI")
+
+    # add flag -v for version
+    parser.add_argument(
+        "-v",
+        "--version",
+        action="version",
+        version=f"Muninn {__version__}",
+        help="show version",
+    )
+
     subparsers = parser.add_subparsers(dest="command", help="Available commands")
 
     # Command: new
