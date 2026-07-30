@@ -1,6 +1,7 @@
 """Tests for src/core/state.py."""
 
 import os
+import shutil
 import tempfile
 
 import pytest
@@ -11,22 +12,18 @@ from src.core.state import StateManager
 class TestStateManager:
     @pytest.fixture
     def state_manager(self, monkeypatch):
-        """Return a StateManager whose DB lives in an ephemeral directory."""
+        """Return a StateManager whose DB lives in an ephemeral directory,
+        isolated from the real ``~/.muninn`` on all platforms."""
         tmp = tempfile.mkdtemp()
-        # Redirect ~/.muninn/states -> tmp
-        monkeypatch.setattr(
-            StateManager.__init__,
-            "__defaults__",
-            None,
-        )
 
-        # Patch os.path.expanduser for '~' to map to tmp
         original_expanduser = os.path.expanduser
 
         def _expanduser(path):
-            if path.startswith("~/"):
-                # Only redirect .muninn paths
+            # Match both Unix "~/" and Windows "~\\" (via os.sep).
+            if path.startswith(("~" + os.sep, "~/")):
                 return os.path.join(tmp, path[2:])
+            if path == "~":
+                return tmp
             return original_expanduser(path)
 
         monkeypatch.setattr(os.path, "expanduser", _expanduser)
@@ -34,6 +31,7 @@ class TestStateManager:
         sm = StateManager("test_pack")
         yield sm
         sm.close()
+        shutil.rmtree(tmp, ignore_errors=True)
 
     def test_init_creates_db_file(self, state_manager):
         assert os.path.isfile(state_manager.db_path)
