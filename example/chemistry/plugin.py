@@ -40,9 +40,13 @@ class Plugin(DataPlugin):
             return json.load(f)
 
     def filter(self, record: dict, q_type: QuestionType) -> bool:
-        """排除 0 族元素的位置类题目."""
-        if q_type.label in ("看位置背元素", "看元素背位置"):
-            return record["group"] != "0"
+        # 排除 0 族元素的位置类题目.
+        if record["group"] == "0":
+            return q_type.label not in ("看位置背元素", "看元素背位置")
+
+        # 排除 VIII 族元素的看位置背元素题目
+        if record["group"] == "VIII":
+            return q_type.label != "看位置背元素"
         return True
 
     def get_expand_info(self, problem_id: str) -> str:
