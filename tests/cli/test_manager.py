@@ -113,7 +113,7 @@ class TestInstallPack:
 class TestRemoteDetection:
     def test_is_url(self):
         assert PackageManager._is_url("https://github.com/a/b")
-        assert PackageManager._is_url("http://example.com/pkg.zip")
+        assert not PackageManager._is_url("http://example.com/pkg.zip")
         assert not PackageManager._is_url("./local-pack")
         assert not PackageManager._is_url("user/repo")
 

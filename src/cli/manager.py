@@ -241,7 +241,10 @@ class Plugin(DataPlugin):
 
         try:
             try:
-                with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT) as resp, open(zip_path, "wb") as f:
+                with (
+                    urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT) as resp,
+                    open(zip_path, "wb") as f,
+                ):
                     shutil.copyfileobj(resp, f)
             except Exception as exc:
                 raise RuntimeError(f"Failed to download from {url}: {exc}") from exc
