@@ -1,6 +1,6 @@
 # Muninn
 
-Muninn (雾尼) - The Extensible Reciting CLI.
+Muninn (雾尼) - An Extensible Reciting CLI.
 
 [中文文档](./README_zh.md)
 
