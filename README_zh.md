@@ -32,11 +32,13 @@ muninn list
 
 # 安装一个外部题库包 (支持本地文件夹、.zip 压缩包或 GitHub 仓库)
 muninn install path/to/pack_or_zip
+# 例：muninn install example/chemistry
 
 # 从 GitHub 安装 (任何含 manifest.json 的公开仓库)
 muninn install user/repo
 muninn install user/repo@v1.0.0
 muninn install https://github.com/user/repo
+# 例：muninn install a1fredbao/muninn-chemistry-plugin
 
 # 卸载一个已安装的题库包
 muninn uninstall <pack_id>

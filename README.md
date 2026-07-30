@@ -34,11 +34,13 @@ muninn list
 
 # Install a pack from a directory, zip file, or GitHub URL
 muninn install path/to/pack_or_zip
+# e.g. muninn install example/chemistry
 
 # Install from GitHub (any public repo with a manifest.json)
 muninn install user/repo
 muninn install user/repo@v1.0.0
 muninn install https://github.com/user/repo
+# e.g. muninn install a1fredbao/muninn-chemistry-plugin
 
 # Uninstall a previously installed pack
 muninn uninstall <pack_id>
