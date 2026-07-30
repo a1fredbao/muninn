@@ -30,8 +30,13 @@ pip install muninn-cli
 # 查看所有已安装的题库包
 muninn list
 
-# 安装一个外部题库包 (支持本地文件夹或 .zip 压缩包)
+# 安装一个外部题库包 (支持本地文件夹、.zip 压缩包或 GitHub 仓库)
 muninn install path/to/pack_or_zip
+
+# 从 GitHub 安装 (任何含 manifest.json 的公开仓库)
+muninn install user/repo
+muninn install user/repo@v1.0.0
+muninn install https://github.com/user/repo
 
 # 卸载一个已安装的题库包
 muninn uninstall <pack_id>

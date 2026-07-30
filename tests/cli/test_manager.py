@@ -76,7 +76,7 @@ class TestCreateTemplate:
 
 
 class TestInstallPack:
-    def test_install_from_directory(self, tmp_workspace, monkeypatch):
+    def test_install_local_directory(self, tmp_workspace, monkeypatch):
         src = os.path.join(tmp_workspace, "mypack")
         _make_minimal_pack(src, pack_id="mypack")
 
@@ -101,14 +101,63 @@ class TestInstallPack:
         monkeypatch.setattr(m, "packs_dir", packs_dir)
 
         m.install_pack(src)
-        # Second install should succeed (overwrite)
         pack_id = m.install_pack(src)
         assert pack_id == "mypack"
 
-    def test_raises_for_nonexistent_path(self):
+    def test_raises_for_nonexistent_local_path(self):
         m = PackageManager()
         with pytest.raises(FileNotFoundError):
             m.install_pack("/nonexistent/path/to/pack")
+
+
+class TestRemoteDetection:
+    def test_is_url(self):
+        assert PackageManager._is_url("https://github.com/a/b")
+        assert PackageManager._is_url("http://example.com/pkg.zip")
+        assert not PackageManager._is_url("./local-pack")
+        assert not PackageManager._is_url("user/repo")
+
+    def test_is_github_short(self):
+        assert PackageManager._is_github_short("user/repo")
+        assert PackageManager._is_github_short("a-b/c_d")
+        assert PackageManager._is_github_short("a.b/c")
+        assert PackageManager._is_github_short("user/repo@v1.0.0")
+        assert not PackageManager._is_github_short("./local")
+
+    def test_github_short_to_url(self):
+        assert (
+            PackageManager._github_short_to_url("user/repo")
+            == "https://github.com/user/repo/archive/refs/heads/main.zip"
+        )
+        assert (
+            PackageManager._github_short_to_url("user/repo@v2.0")
+            == "https://github.com/user/repo/archive/refs/heads/v2.0.zip"
+        )
+
+    def test_resolve_download_url(self):
+        url = PackageManager._resolve_download_url("https://github.com/user/repo")
+        assert url == "https://github.com/user/repo/archive/refs/heads/main.zip"
+
+        url = PackageManager._resolve_download_url(
+            "https://github.com/user/repo@v1.0.0"
+        )
+        assert url == "https://github.com/user/repo/archive/refs/heads/v1.0.0.zip"
+
+        # Direct file URL passes through unchanged
+        direct = "https://example.com/pack.zip"
+        assert PackageManager._resolve_download_url(direct) == direct
+
+    def test_dispatch_local_dir(self, tmp_workspace, monkeypatch):
+        src = os.path.join(tmp_workspace, "mypack")
+        _make_minimal_pack(src, "mypack")
+        packs_dir = os.path.join(tmp_workspace, "fake_muninn", "packs")
+        os.makedirs(packs_dir, exist_ok=True)
+
+        m = PackageManager()
+        monkeypatch.setattr(m, "packs_dir", packs_dir)
+        # Local path – should hit _install_local (no network)
+        pid = m.install_pack(src)
+        assert pid == "mypack"
 
 
 class TestUninstallPack:
