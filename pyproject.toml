@@ -1,5 +1,5 @@
 [project]
-name = "muninn"
+name = "muninn-cli"
 version = "0.1.0"
 description = "Muninn - The Extensible Reciting CLI"
 readme = "README.md"

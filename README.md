@@ -20,10 +20,10 @@ Install Muninn globally using `uv` (recommended) or `pip`:
 
 ```bash
 # Using uv (Recommended)
-uv tool install muninn
+uv tool install muninn-cli
 
 # Or using pip
-pip install muninn
+pip install muninn-cli
 ```
 
 Available commands:

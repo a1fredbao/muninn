@@ -18,10 +18,10 @@ Muninn 作为"宿主"，为你提供了开箱即用的三大能力：
 
 ```bash
 # 使用 uv 安装 (推荐)
-uv tool install muninn
+uv tool install muninn-cli
 
 # 或者使用 pip 安装
-pip install muninn
+pip install muninn-cli
 ```
 
 基础命令：
