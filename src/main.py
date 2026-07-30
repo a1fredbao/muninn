@@ -19,7 +19,7 @@ def main():
 
     # Command: install
     parser_install = subparsers.add_parser(
-        "install", help="Install a pack from a directory or zip file"
+        "install", help="Install a pack from a directory, zip file, or GitHub URL"
     )
     parser_install.add_argument(
         "path", type=str, help="Path to the pack directory or .zip file"

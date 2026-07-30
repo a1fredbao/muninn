@@ -32,8 +32,13 @@ Available commands:
 # List all installed packs
 muninn list
 
-# Install a pack (supports directories or .zip files)
+# Install a pack from a directory, zip file, or GitHub URL
 muninn install path/to/pack_or_zip
+
+# Install from GitHub (any public repo with a manifest.json)
+muninn install user/repo
+muninn install user/repo@v1.0.0
+muninn install https://github.com/user/repo
 
 # Uninstall a previously installed pack
 muninn uninstall <pack_id>
