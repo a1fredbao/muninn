@@ -24,8 +24,8 @@ dependencies = []
 muninn = "src.main:main"
 
 [project.urls]
-Repository = "https://github.com/<your-username>/muninn"
-Issues = "https://github.com/<your-username>/muninn/issues"
+Repository = "https://github.com/a1fredbao/muninn"
+Issues = "https://github.com/a1fredbao/muninn/issues"
 
 [build-system]
 requires = ["hatchling"]

@@ -216,5 +216,3 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
-
-.github/workflows/publish.yml
