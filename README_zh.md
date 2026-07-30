@@ -61,11 +61,11 @@ class Plugin(FlashcardPlugin):
 
 即可。`FlashcardPlugin` 会自动处理题目渲染、答案判题和 ID 生成。
 
-| 文件 | 说明 |
-|------|------|
-| `manifest.json` | 题库包的元数据（包名、作者、版本）。 |
-| `words.csv` | 包含 `front` 和 `back` 两列的数据文件。 |
-| `plugin.py` | 上面 3 行代码。 |
+| 文件            | 说明                                    |
+| --------------- | --------------------------------------- |
+| `manifest.json` | 题库包的元数据（包名、作者、版本）。    |
+| `words.csv`     | 包含 `front` 和 `back` 两列的数据文件。 |
+| `plugin.py`     | 上面 3 行代码。                         |
 
 ### 结构化数据：`DataPlugin` + `QuestionType`
 
@@ -111,14 +111,14 @@ class Plugin(DataPlugin):
 
 不必为每种题型手写正则，使用内置的 `Matchers` 工厂函数：
 
-| 匹配器 | 说明 |
-|--------|------|
-| `Matchers.exact(key)` | 去除首尾空格后精确匹配。 |
-| `Matchers.exact_integer(key)` | 提取输入中的数字后精确比较。 |
-| `Matchers.case_insensitive(key)` | 忽略大小写匹配。 |
-| `Matchers.chinese_symbol_pair(key1, key2)` | 匹配"中文+符号"或"符号+中文"任意顺序，忽略空格。 |
-| `Matchers.any_order(*keys)` | 多个字段的值全部出现在输入中即判对，忽略分隔符和顺序。 |
-| `Matchers.custom(fn)` | 传入自定义函数 `(record, user_input) -> bool`。 |
+| 匹配器                                     | 说明                                                   |
+| ------------------------------------------ | ------------------------------------------------------ |
+| `Matchers.exact(key)`                      | 去除首尾空格后精确匹配。                               |
+| `Matchers.exact_integer(key)`              | 提取输入中的数字后精确比较。                           |
+| `Matchers.case_insensitive(key)`           | 忽略大小写匹配。                                       |
+| `Matchers.chinese_symbol_pair(key1, key2)` | 匹配"中文+符号"或"符号+中文"任意顺序，忽略空格。       |
+| `Matchers.any_order(*keys)`                | 多个字段的值全部出现在输入中即判对，忽略分隔符和顺序。 |
+| `Matchers.custom(fn)`                      | 传入自定义函数 `(record, user_input) -> bool`。        |
 
 ### 底层接口：`BaseRecitePlugin`
 

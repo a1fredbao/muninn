@@ -63,11 +63,11 @@ class Plugin(FlashcardPlugin):
 
 That's it. `FlashcardPlugin` handles rendering, answer-checking, and ID generation automatically.
 
-| File | Description |
-|------|-------------|
+| File            | Description                            |
+| --------------- | -------------------------------------- |
 | `manifest.json` | Pack metadata (name, author, version). |
-| `words.csv` | Data with `front` and `back` columns. |
-| `plugin.py` | The 3-line plugin above. |
+| `words.csv`     | Data with `front` and `back` columns.  |
+| `plugin.py`     | The 3-line plugin above.               |
 
 ### For structured data: `DataPlugin` + `QuestionType`
 
@@ -113,14 +113,14 @@ class Plugin(DataPlugin):
 
 Instead of writing custom regex for every question type, use the built-in `Matchers` factories:
 
-| Matcher | Behavior |
-|---------|----------|
-| `Matchers.exact(key)` | Exact match after trimming whitespace. |
-| `Matchers.exact_integer(key)` | Extract digits, compare numerically. |
-| `Matchers.case_insensitive(key)` | Case-insensitive match. |
-| `Matchers.chinese_symbol_pair(key1, key2)` | Match "中文+符号" or "符号+中文" in any order. |
-| `Matchers.any_order(*keys)` | Match all field values appearing anywhere in the input. |
-| `Matchers.custom(fn)` | Pass your own `(record, user_input) -> bool` function. |
+| Matcher                                    | Behavior                                                |
+| ------------------------------------------ | ------------------------------------------------------- |
+| `Matchers.exact(key)`                      | Exact match after trimming whitespace.                  |
+| `Matchers.exact_integer(key)`              | Extract digits, compare numerically.                    |
+| `Matchers.case_insensitive(key)`           | Case-insensitive match.                                 |
+| `Matchers.chinese_symbol_pair(key1, key2)` | Match "中文+符号" or "符号+中文" in any order.          |
+| `Matchers.any_order(*keys)`                | Match all field values appearing anywhere in the input. |
+| `Matchers.custom(fn)`                      | Pass your own `(record, user_input) -> bool` function.  |
 
 ### Low-level: `BaseRecitePlugin`
 
