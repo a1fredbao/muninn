@@ -33,6 +33,7 @@ class GameRunner:
             self.total_ac_time += stats["total_ac_time"]
 
     def run(self):
+        TerminalUI.enter_alt_screen()
         TerminalUI.clear_screen()
         TerminalUI.print_green(f"====== 正在学习包: {self.pack_id} ======\n")
         TerminalUI.wait_any_key()
@@ -110,7 +111,7 @@ class GameRunner:
         TerminalUI.wait_any_key()
 
     def quit(self):
-        TerminalUI.clear_screen()
+        TerminalUI.exit_alt_screen()
         print("=== 学习统计 ===")
         print(f"总答题数: {self.total_count}")
         if self.total_count > 0:

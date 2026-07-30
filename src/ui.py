@@ -1,7 +1,34 @@
 import os
+import sys
 
 
 class TerminalUI:
+    # -- screen buffer -------------------------------------------------------
+
+    @staticmethod
+    def enter_alt_screen():
+        """Switch to the alternate screen buffer.
+
+        All subsequent output goes to a fresh canvas.  When
+        ``exit_alt_screen()`` is called, the original terminal content
+        (shell history, previous commands) is restored exactly as it was.
+
+        Works on virtually every modern terminal (xterm, iTerm2, Windows
+        Terminal, etc.).  Gracefully degrades to a no-op on terminals
+        that don't support it.
+        """
+        sys.stdout.write("\033[?1049h")
+        sys.stdout.flush()
+
+    @staticmethod
+    def exit_alt_screen():
+        """Restore the main screen buffer, bringing back the original
+        terminal content."""
+        sys.stdout.write("\033[?1049l")
+        sys.stdout.flush()
+
+    # -- drawing helpers -----------------------------------------------------
+
     @staticmethod
     def clear_screen():
         os.system("cls" if os.name == "nt" else "clear")
