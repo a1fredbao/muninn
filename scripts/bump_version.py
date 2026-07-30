@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Bump the muninn version, commit the change, and tag the release.
+"""Bump the muninn-cli version, regenerate the lockfile, commit, and tag.
 
 Usage:
   python scripts/bump_version.py --patch          # 0.1.0 -> 0.1.1
@@ -16,8 +16,10 @@ import subprocess
 import sys
 from pathlib import Path
 
+
 ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = ROOT / "pyproject.toml"
+LOCKFILE = ROOT / "uv.lock"
 VERSION_RE = re.compile(r'^(version\s*=\s*)"([^"]+)"', re.MULTILINE)
 
 
@@ -56,7 +58,7 @@ def run(cmd: list[str], **kwargs) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Bump muninn version")
+    parser = argparse.ArgumentParser(description="Bump muninn-cli version")
     group = parser.add_mutually_exclusive_group(required=True)
     group.add_argument("--patch", action="store_true", help="Bump patch (0.1.0 -> 0.1.1)")
     group.add_argument("--minor", action="store_true", help="Bump minor (0.1.0 -> 0.2.0)")
@@ -87,11 +89,15 @@ def main() -> None:
     write_version(new)
     print(f"✅ Updated {PYPROJECT.relative_to(ROOT)}")
 
-    # 2. Commit
-    run(["git", "add", str(PYPROJECT.relative_to(ROOT))])
+    # 2. Regenerate lockfile so uv.lock records the new version
+    run(["uv", "lock"])
+    print(f"✅ Regenerated {LOCKFILE.relative_to(ROOT)}")
+
+    # 3. Commit both pyproject.toml and uv.lock
+    run(["git", "add", str(PYPROJECT.relative_to(ROOT)), str(LOCKFILE.relative_to(ROOT))])
     run(["git", "commit", "-m", f"chore: bump version to {new}"])
 
-    # 3. Tag
+    # 4. Tag
     run(["git", "tag", "-a", f"v{new}", "-m", f"Release v{new}"])
 
     print(f"✅ Committed and tagged v{new}")

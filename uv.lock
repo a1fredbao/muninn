@@ -21,8 +21,8 @@ wheels = [
 ]
 
 [[package]]
-name = "muninn"
-version = "0.1.0"
+name = "muninn-cli"
+version = "0.1.1"
 source = { editable = "." }
 
 [package.dev-dependencies]
