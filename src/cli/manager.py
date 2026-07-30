@@ -10,6 +10,9 @@ import zipfile
 
 from ..core.base_plugin import BaseRecitePlugin
 
+# Timeout for remote pack downloads (in seconds)
+DOWNLOAD_TIMEOUT = 30
+
 
 class PackageManager:
     def __init__(self):
@@ -152,7 +155,7 @@ class Plugin(DataPlugin):
 
     @staticmethod
     def _is_url(source: str) -> bool:
-        return source.startswith(("http://", "https://"))
+        return source.startswith("https://")
 
     @staticmethod
     def _is_github_short(source: str) -> bool:
@@ -202,15 +205,26 @@ class Plugin(DataPlugin):
         if not os.path.exists(source):
             raise FileNotFoundError(f"Path not found: {source}")
 
+        temp_dir = None
         if os.path.isdir(source):
             temp_dir = tempfile.mkdtemp(dir=self.packs_dir, prefix=".temp_")
-            shutil.copytree(source, temp_dir, dirs_exist_ok=True)
-            pack_id = self._finalise_install(temp_dir)
+            try:
+                shutil.copytree(source, temp_dir, dirs_exist_ok=True)
+                pack_id = self._finalise_install(temp_dir)
+                temp_dir = None  # Successfully finalized, don't clean up
+            finally:
+                if temp_dir and os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir, ignore_errors=True)
         elif zipfile.is_zipfile(source):
             temp_dir = tempfile.mkdtemp(dir=self.packs_dir, prefix=".temp_")
-            with zipfile.ZipFile(source) as zf:
-                zf.extractall(temp_dir)
-            pack_id = self._finalise_install(temp_dir)
+            try:
+                with zipfile.ZipFile(source) as zf:
+                    zf.extractall(temp_dir)
+                pack_id = self._finalise_install(temp_dir)
+                temp_dir = None  # Successfully finalized, don't clean up
+            finally:
+                if temp_dir and os.path.exists(temp_dir):
+                    shutil.rmtree(temp_dir, ignore_errors=True)
         else:
             raise ValueError(
                 "Unsupported file format. Must be a directory or zip file."
@@ -226,25 +240,28 @@ class Plugin(DataPlugin):
         zip_path = os.path.join(temp_dir, "pack.zip")
 
         try:
-            with urllib.request.urlopen(url) as resp, open(zip_path, "wb") as f:
-                shutil.copyfileobj(resp, f)
-        except Exception as exc:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            raise RuntimeError(f"Failed to download from {url}: {exc}") from exc
+            try:
+                with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT) as resp, open(zip_path, "wb") as f:
+                    shutil.copyfileobj(resp, f)
+            except Exception as exc:
+                raise RuntimeError(f"Failed to download from {url}: {exc}") from exc
 
-        if not zipfile.is_zipfile(zip_path):
-            shutil.rmtree(temp_dir, ignore_errors=True)
-            raise ValueError(
-                "Downloaded file is not a valid zip. "
-                "Make sure the URL points to a GitHub repository, not a web page."
-            )
+            if not zipfile.is_zipfile(zip_path):
+                raise ValueError(
+                    "Downloaded file is not a valid zip. "
+                    "Make sure the URL points to a GitHub repository, not a web page."
+                )
 
-        with zipfile.ZipFile(zip_path) as zf:
-            zf.extractall(temp_dir)
+            with zipfile.ZipFile(zip_path) as zf:
+                zf.extractall(temp_dir)
 
-        pack_id = self._finalise_install(temp_dir)
-        print(f"✅ Successfully installed pack '{pack_id}'")
-        return pack_id
+            pack_id = self._finalise_install(temp_dir)
+            temp_dir = None  # Successfully finalized, don't clean up
+            print(f"✅ Successfully installed pack '{pack_id}'")
+            return pack_id
+        finally:
+            if temp_dir and os.path.exists(temp_dir):
+                shutil.rmtree(temp_dir, ignore_errors=True)
 
     def _finalise_install(self, temp_dir: str) -> str:
         """Validate manifest and move *temp_dir* into place.  Returns pack_id."""
