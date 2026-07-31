@@ -55,3 +55,28 @@ jobs:
 
       - name: Run tests
         run: uv run pytest tests/ -v
+
+  deploy-docs:
+    name: Deploy Docs
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install
+
+      - name: Install dependencies
+        run: uv sync --group docs
+
+      - name: Deploy to GitHub Pages
+        run: uv run zensical build --clean && uv run zensical gh-deploy --force -m "Deploy docs"
