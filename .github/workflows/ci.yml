@@ -62,10 +62,17 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     needs: test
     permissions:
-      contents: write
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Install uv
         uses: astral-sh/setup-uv@v9.0.0
@@ -78,5 +85,14 @@ jobs:
       - name: Install dependencies
         run: uv sync --group docs
 
+      - name: Build docs
+        run: uv run zensical build --clean
+      
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: site
+
       - name: Deploy to GitHub Pages
-        run: uv run zensical build --clean && uv run zensical gh-deploy --force -m "Deploy docs"
+        id: deployment
+        uses: actions/deploy-pages@v5
