@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Zensical
+site/
+
+# Agent files
+.agent/

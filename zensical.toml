@@ -1,0 +1,55 @@
+[project]
+site_name = "Muninn"
+site_description = "The Extensible Reciting CLI – Documentation"
+site_url = "https://a1fredbao.github.io/muninn/"
+repo_url = "https://github.com/a1fredbao/muninn"
+edit_uri = "edit/main/docs/"
+
+nav = [
+    { "Home" = "index.md" },
+    { "Getting Started" = "getting-started.md" },
+    { "Command Reference" = "commands.md" },
+    { "Plugin Development" = [
+        { "Overview" = "plugin-dev.md" },
+        { "BaseRecitePlugin" = "api/base-plugin.md" },
+        { "DataPlugin" = "api/data-plugin.md" },
+        { "FlashcardPlugin" = "api/flashcard.md" },
+        { "Matchers" = "api/matchers.md" },
+    ] },
+    { "Pack Specification" = "pack-spec.md" },
+]
+
+[project.theme]
+variant = "modern"
+language = "en"
+features = [
+    "navigation.instant",
+    "navigation.tracking",
+    "navigation.tabs",
+    "navigation.indexes",
+    "search.suggest",
+    "search.highlight",
+    "content.code.copy",
+]
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "indigo"
+accent = "indigo"
+toggle.icon = "material/brightness-7"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "indigo"
+accent = "indigo"
+toggle.icon = "material/brightness-4"
+toggle.name = "Switch to light mode"
+
+[project.plugins.search]
+
+[project.markdown_extensions.admonition]
+
+[project.markdown_extensions.toc]

@@ -39,6 +39,9 @@ dev = [
     "ruff>=0.16.0",
     "pytest>=8.0.0",
 ]
+docs = [
+    "zensical",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
