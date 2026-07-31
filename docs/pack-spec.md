@@ -5,24 +5,28 @@ a `plugin.py`.
 
 ## Directory Structure
 
-    my-pack/
-    ├── manifest.json      # Required: pack metadata
-    ├── plugin.py           # Required: plugin logic
-    ├── data.csv            # Optional: static data
-    └── data.json           # Optional: static data
+``` bash
+my-pack/
+├── manifest.json      # Required: pack metadata
+├── plugin.py           # Required: plugin logic
+├── data.csv            # Optional: static data
+└── data.json           # Optional: static data
+```
 
 Pack IDs must be unique across a user's installation.  Installing a pack
 with the same ID as an existing one overwrites the previous version.
 
 ## `manifest.json`
 
-    {
-        "id": "my-pack",
-        "name": "My Pack",
-        "author": "Your Name",
-        "version": "1.0.0",
-        "description": "A brief description."
-    }
+``` json
+{
+    "id": "my-pack",
+    "name": "My Pack",
+    "author": "Your Name",
+    "version": "1.0.0",
+    "description": "A brief description."
+}
+```
 
 | Field         | Type   | Required | Description                                                                |
 | ------------- | ------ | -------- | -------------------------------------------------------------------------- |

@@ -7,31 +7,33 @@ problem variants automatically.
 
 ## Quick Example
 
+``` python
 import os, json
 from typing import ClassVar
 from core.helpers import DataPlugin, QuestionType, Matchers
 
-    class Plugin(DataPlugin):
-        QUESTION_TYPES: ClassVar[list[QuestionType]] = [
-            QuestionType(
-                label="Symbol → Name",
-                statement=lambda el: f"Element: {el['sym']}",
-                answer=lambda el: el["name"],
-                matcher=Matchers.case_insensitive("name"),
-            ),
-            QuestionType(
-                label="Name → Number",
-                statement=lambda el: f"Element: {el['name']}",
-                answer=lambda el: str(el["num"]),
-                matcher=Matchers.exact_integer("num"),
-            ),
-        ]
+class Plugin(DataPlugin):
+    QUESTION_TYPES: ClassVar[list[QuestionType]] = [
+        QuestionType(
+            label="Symbol → Name",
+            statement=lambda el: f"Element: {el['sym']}",
+            answer=lambda el: el["name"],
+            matcher=Matchers.case_insensitive("name"),
+        ),
+        QuestionType(
+            label="Name → Number",
+            statement=lambda el: f"Element: {el['name']}",
+            answer=lambda el: str(el["num"]),
+            matcher=Matchers.exact_integer("num"),
+        ),
+    ]
 
-        def load_records(self) -> list:
-            with open(
-                os.path.join(self.workspace_dir, "elements.json"), encoding="utf-8"
-            ) as f:
-                return json.load(f)
+    def load_records(self) -> list:
+        with open(
+            os.path.join(self.workspace_dir, "elements.json"), encoding="utf-8"
+        ) as f:
+            return json.load(f)
+```
 
 With 36 elements and 2 question types, this automatically produces 72
 problems — no manual ID generation, no dispatch tables.
@@ -51,19 +53,23 @@ Each dict is passed to every `QuestionType`.
 Optional.  Return `False` to skip a particular record × question-type
 combination.
 
-    def filter(self, record, q_type):
-        if q_type.label == "Position → Element":
-            return record["group"] != "0"  # skip noble gases
-        return True
+``` python
+def filter(self, record, q_type):
+    if q_type.label == "Position → Element":
+        return record["group"] != "0"  # skip noble gases
+    return True
+```
 
 ## `_resolve(problem_id)`
 
 Returns `(record, QuestionType)` for a given problem ID.  Useful when
 overriding `get_expand_info()`:
 
-    def get_expand_info(self, problem_id: str) -> str:
-        el, qt = self._resolve(problem_id)
-        return f"{el['name']} — Period {el['period']}, Group {el['group']}"
+``` python
+def get_expand_info(self, problem_id: str) -> str:
+    el, qt = self._resolve(problem_id)
+    return f"{el['name']} — Period {el['period']}, Group {el['group']}"
+```
 
 ## Problem ID Format
 

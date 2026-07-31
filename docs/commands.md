@@ -4,7 +4,9 @@
 
 Install a reciting pack.
 
-    muninn install <source>
+``` bash
+muninn install <source>
+```
 
 `<source>` accepts:
 
@@ -23,7 +25,9 @@ The pack is copied to `~/.muninn/packs/<pack_id>/`. Installing the same
 
 Remove a previously installed pack.
 
-    muninn uninstall <pack_id>
+```bash
+muninn uninstall <pack_id>
+```
 
 Deletes `~/.muninn/packs/<pack_id>/`.  Progress data in
 `~/.muninn/states/<pack_id>.db` is **not** deleted — you can reinstall
@@ -33,13 +37,17 @@ later and pick up where you left off.
 
 List all installed packs with their metadata (id, name, author, version).
 
-    muninn list
+``` bash
+muninn list
+```
 
 ## `muninn run`
 
 Start a reciting session for a pack.
 
-    muninn run <pack_id>
+``` bash
+muninn run <pack_id>
+```
 
 The scheduler presents problems based on your historical accuracy and
 response time, favouring topics you struggle with.
@@ -53,7 +61,9 @@ During a session:
 
 Generate a new plugin template in the current directory.
 
-    muninn new <pack_name>
+``` bash
+muninn new <pack_name>
+```
 
 Creates a `<pack_name>/` folder containing:
 

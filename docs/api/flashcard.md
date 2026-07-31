@@ -7,18 +7,21 @@
 
 Create a CSV with `front` and `back` columns:
 
-    front,back
-    apple,苹果
-    dog,狗
-    cat,猫
+``` csv
+front,back
+apple,苹果
+dog,狗
+cat,猫
+```
 
 Then write a 3-line plugin:
 
-    from core.helpers import FlashcardPlugin
+``` python
+from core.helpers import FlashcardPlugin
 
-
-    class Plugin(FlashcardPlugin):
-        DATA_FILE = "words.csv"
+class Plugin(FlashcardPlugin):
+    DATA_FILE = "words.csv"
+```
 
 That's it.  `FlashcardPlugin` automatically:
 
@@ -37,16 +40,20 @@ That's it.  `FlashcardPlugin` automatically:
 
 Override `get_expand_info()` to show extra context on correct answers:
 
-    class Plugin(FlashcardPlugin):
-        DATA_FILE = "words.csv"
+``` python
+class Plugin(FlashcardPlugin):
+    DATA_FILE = "words.csv"
 
-        def get_expand_info(self, problem_id: str) -> str:
-            record, _ = self._resolve(problem_id)
-            return record.get("example", "")
+    def get_expand_info(self, problem_id: str) -> str:
+        record, _ = self._resolve(problem_id)
+        return record.get("example", "")
+```
 
 ## File Layout
 
-    my-flashcards/
-    ├── manifest.json
-    ├── plugin.py        # 3 lines
-    └── words.csv        # front, back columns
+``` bash
+my-flashcards/
+├── manifest.json
+├── plugin.py        # 3 lines
+└── words.csv        # front, back columns
+```
