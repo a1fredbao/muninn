@@ -53,3 +53,10 @@ toggle.name = "Switch to light mode"
 [project.markdown_extensions.admonition]
 
 [project.markdown_extensions.toc]
+
+[project.markdown_extensions.pymdownx.highlight]
+anchor_linenums = true
+line_spans = "__span"
+pygments_lang_class = true
+
+[project.markdown_extensions.pymdownx.inlinehilite]

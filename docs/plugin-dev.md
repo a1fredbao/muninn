@@ -21,25 +21,21 @@ full control.
 
 ## Pack Layout
 
-```bash
-my-pack/
-├── manifest.json   # Package metadata
-├── plugin.py        # Core logic
-├── data.csv         # Static data (optional — whatever your plugin needs)
-└── data.json        # Alternative data format
-```
+    my-pack/
+    ├── manifest.json   # Package metadata
+    ├── plugin.py        # Core logic
+    ├── data.csv         # Static data (optional — whatever your plugin needs)
+    └── data.json        # Alternative data format
 
 ## manifest.json
 
-```json
-{
-    "id": "my-pack",
-    "name": "My Pack",
-    "author": "Your Name",
-    "version": "1.0.0",
-    "description": "A brief description."
-}
-```
+    {
+        "id": "my-pack",
+        "name": "My Pack",
+        "author": "Your Name",
+        "version": "1.0.0",
+        "description": "A brief description."
+    }
 
 | Field         | Required | Notes                                          |
 | ------------- | -------- | ---------------------------------------------- |

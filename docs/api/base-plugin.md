@@ -4,36 +4,34 @@
 five methods for full control over rendering, answer checking, and
 metadata display.
 
-```python
-from core.base_plugin import BaseRecitePlugin
+    from core.base_plugin import BaseRecitePlugin
 
 
-class Plugin(BaseRecitePlugin):
-    def load_data(self):
-        """Load static data from ``self.workspace_dir``.  Called once
-        at initialisation."""
-        pass
+    class Plugin(BaseRecitePlugin):
+        def load_data(self):
+            """Load static data from ``self.workspace_dir``.  Called once
+            at initialisation."""
+            pass
 
-    def get_all_problem_ids(self) -> list[str]:
-        """Return every unique problem ID in this pack."""
-        pass
+        def get_all_problem_ids(self) -> list[str]:
+            """Return every unique problem ID in this pack."""
+            pass
 
-    def render_statement(self, problem_id: str) -> str:
-        """Return the question text shown to the user."""
-        pass
+        def render_statement(self, problem_id: str) -> str:
+            """Return the question text shown to the user."""
+            pass
 
-    def check_answer(self, problem_id: str, user_input: str) -> bool:
-        """Return ``True`` if *user_input* is correct."""
-        pass
+        def check_answer(self, problem_id: str, user_input: str) -> bool:
+            """Return ``True`` if *user_input* is correct."""
+            pass
 
-    def get_expected_display(self, problem_id: str) -> str:
-        """Return the correct answer to show on failure."""
-        pass
+        def get_expected_display(self, problem_id: str) -> str:
+            """Return the correct answer to show on failure."""
+            pass
 
-    def get_expand_info(self, problem_id: str) -> str:
-        """Optional: return extra info to show on success."""
-        return ""
-```
+        def get_expand_info(self, problem_id: str) -> str:
+            """Optional: return extra info to show on success."""
+            return ""
 
 ## Lifecycle
 
@@ -50,11 +48,9 @@ class Plugin(BaseRecitePlugin):
 `~/.muninn/packs/<pack_id>/`.  Use it to load static assets like CSV or
 JSON files:
 
-```python
-def load_data(self):
-    import json, os
+    def load_data(self):
+        import json, os
 
-    path = os.path.join(self.workspace_dir, "data.json")
-    with open(path, encoding="utf-8") as f:
-        self.records = json.load(f)
-```
+        path = os.path.join(self.workspace_dir, "data.json")
+        with open(path, encoding="utf-8") as f:
+            self.records = json.load(f)
