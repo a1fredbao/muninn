@@ -16,7 +16,7 @@ pip install muninn-cli
 # Install a pack from a local directory, zip file, or GitHub repo
 muninn install ./my-pack
 muninn install user/repo
-muninn install user/repo@v1.0.0
+muninn install user/repo@dev
 muninn install https://github.com/user/repo
 
 # List installed packs

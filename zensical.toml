@@ -1,9 +1,23 @@
 [project]
 site_name = "Muninn"
-description = "The Extensible Reciting CLI – Documentation"
+site_description = "The Extensible Reciting CLI – Documentation"
 site_url = "https://a1fredbao.github.io/muninn/"
 repo_url = "https://github.com/a1fredbao/muninn"
 edit_uri = "edit/main/docs/"
+
+nav = [
+    { "Home" = "index.md" },
+    { "Getting Started" = "getting-started.md" },
+    { "Command Reference" = "commands.md" },
+    { "Plugin Development" = [
+        { "Overview" = "plugin-dev.md" },
+        { "BaseRecitePlugin" = "api/base-plugin.md" },
+        { "DataPlugin" = "api/data-plugin.md" },
+        { "FlashcardPlugin" = "api/flashcard.md" },
+        { "Matchers" = "api/matchers.md" },
+    ] },
+    { "Pack Specification" = "pack-spec.md" },
+]
 
 [project.theme]
 variant = "modern"
@@ -36,18 +50,6 @@ toggle.name = "Switch to light mode"
 
 [project.plugins.search]
 
-markdown_extensions = ["admonition", "toc"]
+[project.markdown_extensions.admonition]
 
-nav = [
-    { "Home" = "index.md" },
-    { "Getting Started" = "getting-started.md" },
-    { "Command Reference" = "commands.md" },
-    { "Plugin Development" = [
-        { "Overview" = "plugin-dev.md" },
-        { "BaseRecitePlugin" = "api/base-plugin.md" },
-        { "DataPlugin" = "api/data-plugin.md" },
-        { "FlashcardPlugin" = "api/flashcard.md" },
-        { "Matchers" = "api/matchers.md" },
-    ] },
-    { "Pack Specification" = "pack-spec.md" },
-]
+[project.markdown_extensions.toc]

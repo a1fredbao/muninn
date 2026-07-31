@@ -69,7 +69,7 @@ overriding `get_expand_info()`:
 ```python
 def get_expand_info(self, problem_id: str) -> str:
     el, qt = self._resolve(problem_id)
-    return f"{el['eng']} — Period {el['period']}, Group {el['group']}"
+    return f"{el['name']} — Period {el['period']}, Group {el['group']}"
 ```
 
 ## Problem ID Format

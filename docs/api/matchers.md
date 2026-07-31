@@ -19,7 +19,7 @@ Matchers.exact("name")
 
 ### `Matchers.exact_integer(key)`
 
-Extract digits from the user input and compare numerically.
+Extract digits from the user input and compare as strings (after stripping non-digit characters from the input). Note: this is string-based comparison, so leading zeros are preserved (e.g., "007" != "7").
 
 ```python
 # record: {"num": 17}
@@ -56,7 +56,7 @@ Matchers.chinese_symbol_pair("name", "sym")
 ### `Matchers.any_order(*keys)`
 
 Match when all field values appear somewhere in the input, ignoring
-non-alphanumeric characters and case.
+non-alphanumeric characters and case. Only ASCII letters and digits are retained during normalization; Unicode characters are discarded.
 
 ```python
 # record: {"period": 4, "group": "IVB"}

@@ -10,13 +10,13 @@ muninn install <source>
 
 `<source>` accepts:
 
-| Format                 | Example                                 |
-| ---------------------- | --------------------------------------- |
-| Local directory        | `./my-pack` or `/abs/path`              |
-| Local `.zip` file      | `./my-pack.zip`                         |
-| GitHub shorthand       | `user/repo` (defaults to `main` branch) |
-| GitHub shorthand + ref | `user/repo@v1.0.0`                      |
-| Full GitHub URL        | `https://github.com/user/repo`          |
+| Format                    | Example                                 |
+| ------------------------- | --------------------------------------- |
+| Local directory           | `./my-pack` or `/abs/path`              |
+| Local `.zip` file         | `./my-pack.zip`                         |
+| GitHub shorthand          | `user/repo` (defaults to `main` branch) |
+| GitHub shorthand + branch | `user/repo@dev`                         |
+| Full GitHub URL           | `https://github.com/user/repo`          |
 
 The pack is copied to `~/.muninn/packs/<pack_id>/`. Installing the same
 `pack_id` again overwrites the previous version.

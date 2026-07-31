@@ -49,3 +49,4 @@ and `plugin.py` at the top level (with data files alongside them).
 Muninn uses GitHub's archive API to fetch the zip, so the standard
 `https://github.com/user/repo/archive/refs/heads/main.zip` URL is used
 automatically — no git installation is required on the user's machine.
+Note: only branch references are supported; git tags cannot be resolved.
