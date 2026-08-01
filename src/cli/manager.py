@@ -81,12 +81,16 @@ class PackageManager:
         remote_manifest = self._fetch_remote_manifest(source)
 
         if remote_manifest is None:
-            print(f"⚠️  Could not fetch remote manifest for '{pack_id}' — network error, missing path, or unsupported source.")
+            print(
+                f"⚠️  Could not fetch remote manifest for '{pack_id}' — network error, missing path, or unsupported source."
+            )
             return False
 
         remote_ver = remote_manifest.get("version")
         if not remote_ver:
-            print(f"⚠️  Remote manifest for '{pack_id}' has no version — cannot upgrade.")
+            print(
+                f"⚠️  Remote manifest for '{pack_id}' has no version — cannot upgrade."
+            )
             return False
         if self._is_newer(remote_ver, current_ver):
             old_ver = current_ver
