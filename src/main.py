@@ -15,7 +15,7 @@ except PackageNotFoundError:
 def main():
     parser = argparse.ArgumentParser(description="Muninn - The Extensible Reciting CLI")
 
-    # add flag -v for version
+    # Flag: -v/--version for version
     parser.add_argument(
         "-v",
         "--version",
@@ -47,6 +47,14 @@ def main():
     )
     parser_uninstall.add_argument(
         "pack_id", type=str, help="The ID of the pack to uninstall"
+    )
+
+    # Command: upgrade
+    parser_upgrade = subparsers.add_parser(
+        "upgrade", help="Upgrade installed packs to the latest version"
+    )
+    parser_upgrade.add_argument(
+        "pack_id", type=str, nargs="?", help="The ID of a specific pack to upgrade"
     )
 
     # Command: list
@@ -81,6 +89,15 @@ def main():
             manager.uninstall_pack(args.pack_id)
         except Exception as e:  # noqa: BLE001
             print(f"❌ Failed to uninstall pack: {e}")
+
+    elif args.command == "upgrade":
+        try:
+            if args.pack_id:
+                manager.upgrade_pack(args.pack_id)
+            else:
+                manager.upgrade_all()
+        except Exception as e:  # noqa: BLE001
+            print(f"❌ Failed to upgrade: {e}")
 
     elif args.command == "list":
         packs = manager.list_packs()
