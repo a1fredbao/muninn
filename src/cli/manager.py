@@ -73,19 +73,26 @@ class PackageManager:
             print(f"⚠️  '{pack_id}' has no source recorded — cannot upgrade.")
             return False
 
-        current_ver = manifest["version"]
+        current_ver = manifest.get("version")
+        if not current_ver:
+            print(f"⚠️  '{pack_id}' has no version in manifest — cannot upgrade.")
+            return False
+
         remote_manifest = self._fetch_remote_manifest(source)
 
         if remote_manifest is None:
+            print(f"⚠️  Could not fetch remote manifest for '{pack_id}' — network error, missing path, or unsupported source.")
             return False
 
-        remote_ver = remote_manifest["version"]
+        remote_ver = remote_manifest.get("version")
+        if not remote_ver:
+            print(f"⚠️  Remote manifest for '{pack_id}' has no version — cannot upgrade.")
+            return False
         if self._is_newer(remote_ver, current_ver):
             old_ver = current_ver
             new_ver = remote_ver
             print(f"⬆️  Upgrading '{pack_id}': {old_ver} → {new_ver}")
-            self._reinstall_from_source(pack_id, source)
-            return True
+            return self._reinstall_from_source(pack_id, source)
 
         print(f"✅ '{pack_id}' ({current_ver}) is already up to date.")
         return False
@@ -97,12 +104,14 @@ class PackageManager:
         """
         results: dict[str, bool] = {}
         for pack in self.list_packs():
-            pid = pack["id"]
             try:
+                pid = pack["id"]
                 results[pid] = self.upgrade_pack(pid)
             except Exception as exc:  # noqa: BLE001
+                pid = pack.get("id", "unknown")
                 print(f"❌ Failed to upgrade '{pid}': {exc}")
-                results[pid] = False
+                if pid != "unknown":
+                    results[pid] = False
         return results
 
     def load_plugin(self, pack_id: str) -> BaseRecitePlugin:
@@ -423,7 +432,7 @@ class Plugin(DataPlugin):
             try:
                 with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT) as resp:
                     return json.loads(resp.read().decode("utf-8"))
-            except OSError:
+            except (OSError, json.JSONDecodeError):
                 continue
 
         return None
@@ -440,7 +449,32 @@ class Plugin(DataPlugin):
 
     @staticmethod
     def _version_tuple(version_str: str) -> tuple[int, ...]:
-        return tuple(int(x) for x in version_str.split("."))
+        """Parse version string to normalized tuple, handling prefixes/suffixes.
+
+        Examples:
+            "1.0.0" -> (1, 0, 0)
+            "v1.0.0" -> (1, 0, 0)
+            "1.0.0-beta" -> (1, 0, 0)
+            "1.0" -> (1, 0, 0)
+        """
+        # Strip common prefixes
+        cleaned = version_str.lstrip("vV")
+
+        # Extract numeric parts before any non-numeric suffix
+        numeric_parts = []
+        for part in cleaned.split("."):
+            # Take only leading digits from each part
+            match = re.match(r"(\d+)", part)
+            if match:
+                numeric_parts.append(int(match.group(1)))
+            else:
+                break
+
+        # Normalize to at least 3 parts for consistent comparison
+        while len(numeric_parts) < 3:
+            numeric_parts.append(0)
+
+        return tuple(numeric_parts)
 
     @staticmethod
     def _is_newer(remote_ver: str, local_ver: str) -> bool:
@@ -448,16 +482,22 @@ class Plugin(DataPlugin):
             remote_ver
         ) > PackageManager._version_tuple(local_ver)
 
-    def _reinstall_from_source(self, pack_id: str, source: str) -> None:
-        """Re-install *pack_id* from its recorded *source*."""
+    def _reinstall_from_source(self, pack_id: str, source: str) -> bool:
+        """Re-install *pack_id* from its recorded *source*.
+
+        Returns True if reinstallation succeeded, False otherwise.
+        """
         if source.startswith("github:"):
             src = source.removeprefix("github:")
             self.install_pack(src)
+            return True
         elif source.startswith("local:"):
             path = source.removeprefix("local:")
             if not os.path.exists(path):
                 print(f"⚠️  Source path '{path}' no longer exists — skipping.")
-                return
+                return False
             self.install_pack(path)
+            return True
         else:
             print(f"⚠️  Unknown source format for '{pack_id}': {source}")
+            return False

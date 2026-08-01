@@ -262,8 +262,11 @@ class TestUpgrade:
         m.install_pack(source_dir)
         assert m.upgrade_pack("p3") is False
 
-    def test_upgrade_nonexistent_pack(self):
+    def test_upgrade_nonexistent_pack(self, tmp_workspace, monkeypatch):
+        packs_dir = os.path.join(tmp_workspace, "packs")
+        os.makedirs(packs_dir, exist_ok=True)
         m = PackageManager()
+        monkeypatch.setattr(m, "packs_dir", packs_dir)
         with pytest.raises(FileNotFoundError):
             m.upgrade_pack("ghost")
 
