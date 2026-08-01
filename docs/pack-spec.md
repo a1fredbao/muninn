@@ -58,9 +58,9 @@ When a pack is installed, Muninn records the installation source in
 `manifest.json`.  This enables `muninn upgrade <pack_id>` (or
 `muninn upgrade` to upgrade all packs) to:
 
-1. Read the remote `manifest.json` from the original source.
-2. Compare the remote version against the installed version.
-3. Re-install the pack if the remote version is newer.
+1. Read `manifest.json` from the recorded source (local path or GitHub).
+2. Compare the source version against the installed version.
+3. Re-install the pack if the source version is newer.
 
 Pack authors should [bump the `version` field](https://semver.org/)
 whenever they publish changes — that is the signal Muninn uses to
