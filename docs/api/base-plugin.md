@@ -7,6 +7,7 @@ metadata display.
 ``` python
 from core.base_plugin import BaseRecitePlugin
 
+
 class Plugin(BaseRecitePlugin):
     def load_data(self):
         """Load static data from ``self.workspace_dir``.  Called once

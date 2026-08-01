@@ -12,6 +12,7 @@ import os, json
 from typing import ClassVar
 from core.helpers import DataPlugin, QuestionType, Matchers
 
+
 class Plugin(DataPlugin):
     QUESTION_TYPES: ClassVar[list[QuestionType]] = [
         QuestionType(

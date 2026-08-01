@@ -74,5 +74,6 @@ def my_matcher(record, user_input):
     # custom logic
     return True
 
+
 Matchers.custom(my_matcher)
 ```

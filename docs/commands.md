@@ -4,7 +4,7 @@
 
 Install a reciting pack.
 
-``` bash
+```bash
 muninn install <source>
 ```
 
@@ -18,8 +18,34 @@ muninn install <source>
 | GitHub shorthand + branch | `user/repo@dev`                         |
 | Full GitHub URL           | `https://github.com/user/repo`          |
 
-The pack is copied to `~/.muninn/packs/<pack_id>/`. Installing the same
+The pack is copied to `~/.muninn/packs/<pack_id>/`.  Installing the same
 `pack_id` again overwrites the previous version.
+
+Muninn records the installation source in the pack's `manifest.json` so
+that `muninn upgrade` knows where to check for updates later.
+
+## `muninn upgrade`
+
+Check for and install newer versions of installed packs.
+
+```bash
+# Upgrade all installed packs
+muninn upgrade
+
+# Upgrade a specific pack
+muninn upgrade <pack_id>
+```
+
+How it works:
+
+| Source type                 | Upgrade strategy                                                                                                                    |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| GitHub (`github:user/repo`) | Fetches `manifest.json` from the repository's default branch. If the remote version is newer, the pack is re-installed from GitHub. |
+| Local path (`local:/path`)  | Reads `manifest.json` from the source directory. If it no longer exists, the pack is skipped with a warning.                        |
+
+Packs installed before Muninn 0.3.0 do not have a `source` field and
+cannot be upgraded — reinstall them with `muninn install` to enable
+upgrades.
 
 ## `muninn uninstall`
 
@@ -37,7 +63,7 @@ later and pick up where you left off.
 
 List all installed packs with their metadata (id, name, author, version).
 
-``` bash
+```bash
 muninn list
 ```
 
@@ -45,7 +71,7 @@ muninn list
 
 Start a reciting session for a pack.
 
-``` bash
+```bash
 muninn run <pack_id>
 ```
 
@@ -61,7 +87,7 @@ During a session:
 
 Generate a new plugin template in the current directory.
 
-``` bash
+```bash
 muninn new <pack_name>
 ```
 
