@@ -5,7 +5,7 @@ a `plugin.py`.
 
 ## Directory Structure
 
-```
+``` bash
 my-pack/
 ├── manifest.json      # Required: pack metadata
 ├── plugin.py           # Required: plugin logic
@@ -28,14 +28,14 @@ with the same ID as an existing one overwrites the previous version.
 }
 ```
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `id` | string | Yes | Unique identifier. Must match the directory name under `~/.muninn/packs/`. |
-| `name` | string | Yes | Human-readable display name. |
-| `author` | string | No | Author name or handle. |
-| `version` | string | Yes | Semantic version (`MAJOR.MINOR.PATCH`). |
-| `description` | string | No | Short description of the pack's content. |
-| `source` | string | Auto | Set by Muninn on install. Tracks where the pack came from so `muninn upgrade` knows where to check for updates. One of `local:<abspath>`, `github:user/repo`, or `github:user/repo@ref`. Do not set manually. |
+| Field         | Type   | Required | Description                                                                                                                                                                                                   |
+| ------------- | ------ | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`          | string | Yes      | Unique identifier. Must match the directory name under `~/.muninn/packs/`.                                                                                                                                    |
+| `name`        | string | Yes      | Human-readable display name.                                                                                                                                                                                  |
+| `author`      | string | No       | Author name or handle.                                                                                                                                                                                        |
+| `version`     | string | Yes      | Semantic version (`MAJOR.MINOR.PATCH`).                                                                                                                                                                       |
+| `description` | string | No       | Short description of the pack's content.                                                                                                                                                                      |
+| `source`      | string | Auto     | Set by Muninn on install. Tracks where the pack came from so `muninn upgrade` knows where to check for updates. One of `local:<abspath>`, `github:user/repo`, or `github:user/repo@ref`. Do not set manually. |
 
 ## Distribution
 

@@ -38,10 +38,10 @@ muninn upgrade <pack_id>
 
 How it works:
 
-| Source type | Upgrade strategy |
-|-------------|-----------------|
+| Source type                 | Upgrade strategy                                                                                                                    |
+| --------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | GitHub (`github:user/repo`) | Fetches `manifest.json` from the repository's default branch. If the remote version is newer, the pack is re-installed from GitHub. |
-| Local path (`local:/path`) | Reads `manifest.json` from the source directory. If it no longer exists, the pack is skipped with a warning. |
+| Local path (`local:/path`)  | Reads `manifest.json` from the source directory. If it no longer exists, the pack is skipped with a warning.                        |
 
 Packs installed before Muninn 0.3.0 do not have a `source` field and
 cannot be upgraded — reinstall them with `muninn install` to enable
