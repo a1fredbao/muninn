@@ -77,6 +77,11 @@ openai>=1.0.0
 httpx>=0.27.0
 ```
 
-Muninn installs these into a shared virtual environment at
-`~/.muninn/venv/` automatically during `muninn install` and
+Muninn creates an isolated virtual environment at
+`~/.muninn/venvs/<pack_id>/` for each pack and installs the declared
+packages there automatically during `muninn install` and
 `muninn upgrade`.  No action is needed from the user.
+
+If dependency installation fails (e.g. a typo in the package name, a
+network error), Muninn does **not** replace the pack.  The existing
+version stays in place and an error message is printed.

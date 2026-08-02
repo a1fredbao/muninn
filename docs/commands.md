@@ -26,14 +26,17 @@ that `muninn upgrade` knows where to check for updates later.
 
 ### Dependencies
 
-If a pack includes a `requirements.txt` at its root, Muninn installs
-those packages into a shared virtual environment at `~/.muninn/venv/`.
-No manual `pip install` step is required — the next `muninn run` will
-find the installed packages automatically.
+If a pack includes a `requirements.txt` at its root, Muninn creates an
+isolated virtual environment at `~/.muninn/venvs/<pack_id>/` and
+installs the declared packages there.  Each pack gets its own venv, so
+two packs can depend on different versions of the same library without
+conflict.  No manual `pip install` step is required — the next
+`muninn run` will find the installed packages automatically.
 
 This is designed for packs that need third-party libraries (e.g. `openai`
 for AI-powered answer checking, `requests` for fetching live data).  The
-shared venv keeps plugin dependencies isolated from your system Python.
+per-pack venv keeps plugin dependencies isolated from your system Python
+and from each other.
 
 ## `muninn upgrade`
 
