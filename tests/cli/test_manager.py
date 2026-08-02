@@ -188,7 +188,6 @@ class TestUninstallPack:
         monkeypatch.setattr(m, "packs_dir", packs_dir)
 
         # Mock _get_pack_venv_dir to use our test venvs_dir
-        original_get_venv = m._get_pack_venv_dir
 
         def mock_get_venv(pack_id):
             return os.path.join(venvs_dir, pack_id)
