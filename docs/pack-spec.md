@@ -7,8 +7,9 @@ a `plugin.py`.
 
 ``` bash
 my-pack/
-├── manifest.json      # Required: pack metadata
+├── manifest.json       # Required: pack metadata
 ├── plugin.py           # Required: plugin logic
+├── requirements.txt    # Optional: pip dependencies
 ├── data.csv            # Optional: static data
 └── data.json           # Optional: static data
 ```
@@ -65,3 +66,17 @@ When a pack is installed, Muninn records the installation source in
 Pack authors should [bump the `version` field](https://semver.org/)
 whenever they publish changes — that is the signal Muninn uses to
 determine whether an upgrade is available.
+
+## Dependencies
+
+If your plugin needs third-party Python packages, place a standard
+`requirements.txt` at the root of your pack:
+
+``` text
+openai>=1.0.0
+httpx>=0.27.0
+```
+
+Muninn installs these into a shared virtual environment at
+`~/.muninn/venv/` automatically during `muninn install` and
+`muninn upgrade`.  No action is needed from the user.
