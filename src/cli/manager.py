@@ -20,7 +20,6 @@ class PackageManager:
     def __init__(self):
         self.packs_dir = os.path.expanduser("~/.muninn/packs")
         os.makedirs(self.packs_dir, exist_ok=True)
-        self.venv_dir = os.path.expanduser("~/.muninn/venv")
 
     # ------------------------------------------------------------------
     # Public API
@@ -131,8 +130,9 @@ class PackageManager:
         if not os.path.exists(plugin_path):
             raise FileNotFoundError(f"plugin.py not found in {pack_id}.")
 
+        orig_sys_path = sys.path.copy()
         # Make shared-venv packages importable (e.g. openai, httpx)
-        venv_site = self._get_venv_site_packages()
+        venv_site = self._get_pack_site_packages(pack_id)
         if os.path.isdir(venv_site):
             sys.path.insert(0, venv_site)
 
@@ -160,7 +160,7 @@ class PackageManager:
                 f"No valid BaseRecitePlugin subclass found in {plugin_path}"
             )
         finally:
-            sys.path.pop(0)
+            sys.path[:] = orig_sys_path
 
     def list_packs(self):
         packs = []
@@ -405,66 +405,73 @@ class Plugin(DataPlugin):
         shutil.move(temp_dir, target_dir)
 
         # Install plugin dependencies from requirements.txt if present
-        self._install_pack_dependencies(target_dir)
+        self._install_pack_dependencies(target_dir, pack_id)
 
         return pack_id
 
     # ------------------------------------------------------------------
+    # Internal: per-pack dependency management
     # ------------------------------------------------------------------
-    # Internal: shared-venv dependency management
-    # ------------------------------------------------------------------
+    # Each pack that declares a ``requirements.txt`` gets its own
+    # isolated venv under ``~/.muninn/venvs/<pack_id>/``.  This
+    # prevents version conflicts between packs.
 
-    def _ensure_venv(self) -> str:
-        """Return the path to ``~/.muninn/venv/bin/python`` (or the
-        Windows equivalent), creating the venv if it doesn't already
-        exist."""
+    def _get_pack_venv_dir(self, pack_id: str) -> str:
+        """Return the path to the isolated venv for *pack_id*."""
+        return os.path.join(os.path.expanduser("~/.muninn/venvs"), pack_id)
+
+    def _ensure_pack_venv(self, pack_id: str) -> str:
+        """Return the path to the Python interpreter inside *pack_id*'s
+        isolated venv, creating the venv if it doesn't already exist."""
+        venv_dir = self._get_pack_venv_dir(pack_id)
+        exe_name = os.path.basename(sys.executable)
         python_exe = os.path.join(
-            self.venv_dir,
+            venv_dir,
             "Scripts" if os.name == "nt" else "bin",
-            "python",
+            exe_name,
         )
         if os.path.isfile(python_exe):
             return python_exe
 
         try:
             subprocess.run(
-                [sys.executable, "-m", "venv", "--clear", self.venv_dir],
+                [sys.executable, "-m", "venv", "--clear", venv_dir],
                 check=True,
                 capture_output=True,
                 text=True,
             )
         except subprocess.CalledProcessError as exc:
             raise RuntimeError(
-                "Failed to create shared dependency environment at "
-                f"'{self.venv_dir}'.  Your Python installation may "
+                "Failed to create dependency environment at "
+                f"'{venv_dir}'.  Your Python installation may "
                 "not include 'venv' (try 'apt install python3-venv' "
                 f"on Debian/Ubuntu).  Original error: {exc.stderr.strip()}"
             ) from exc
         return python_exe
 
-    def _get_venv_site_packages(self) -> str:
-        """Return the site-packages directory inside the shared venv."""
+    def _get_pack_site_packages(self, pack_id: str) -> str:
+        """Return the site-packages directory for *pack_id*'s venv."""
         return sysconfig.get_path(
-            "purelib", scheme="venv", vars={"base": self.venv_dir}
+            "purelib",
+            scheme="venv",
+            vars={"base": self._get_pack_venv_dir(pack_id)},
         )
 
-    def _install_pack_dependencies(self, pack_dir: str) -> None:
+    def _install_pack_dependencies(self, pack_dir: str, pack_id: str) -> None:
         """If *pack_dir* contains a ``requirements.txt``, install its
-        contents into the shared ``~/.muninn/venv``."""
+        contents into the pack's isolated venv."""
         req_path = os.path.join(pack_dir, "requirements.txt")
         if not os.path.isfile(req_path):
             return
 
-        # Skip empty requirements files
+        # Skip empty requirements files --- venv creation would be wasteful.
         if os.path.getsize(req_path) == 0:
             return
 
-        venv_python = self._ensure_venv()
+        venv_python = self._ensure_pack_venv(pack_id)
         pip = os.path.join(os.path.dirname(venv_python), "pip")
 
-        # On Windows the executable is pip.exe, but subprocess handles
-        # the extension automatically via PATHEXT.
-        print(f"📦 Installing dependencies for '{os.path.basename(pack_dir)}' ...")
+        print(f"📦 Installing dependencies for '{pack_id}' ...")
         try:
             subprocess.run(
                 [pip, "install", "--quiet", "-r", req_path],

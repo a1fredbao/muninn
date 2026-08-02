@@ -338,6 +338,7 @@ class TestVersion:
         assert PackageManager._version_tuple("version-1.0") == (0, 0, 0)
         assert PackageManager._version_tuple("1.b.c") == (1, 0, 0)
 
+
 class TestLoadPluginCornerCases:
     def test_raises_if_no_valid_subclass(self, tmp_workspace, monkeypatch):
         src = os.path.join(tmp_workspace, "badpack")
@@ -345,7 +346,7 @@ class TestLoadPluginCornerCases:
         manifest = {"id": "badpack", "version": "1.0.0"}
         with open(os.path.join(src, "manifest.json"), "w") as f:
             json.dump(manifest, f)
-        
+
         # Plugin that doesn't subclass BaseRecitePlugin
         with open(os.path.join(src, "plugin.py"), "w") as f:
             f.write("class Plugin:\n    pass\n")
@@ -356,5 +357,7 @@ class TestLoadPluginCornerCases:
         monkeypatch.setattr(m, "packs_dir", packs_dir)
         m.install_pack(src)
 
-        with pytest.raises(ValueError, match="No valid BaseRecitePlugin subclass found"):
+        with pytest.raises(
+            ValueError, match="No valid BaseRecitePlugin subclass found"
+        ):
             m.load_plugin("badpack")

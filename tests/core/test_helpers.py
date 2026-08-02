@@ -288,10 +288,11 @@ class TestFlashcardPlugin:
         # render_statement and get_expected_display use .get("back", ""), so they won't raise
         assert p.render_statement("0") == "【闪卡】 cat"
         assert p.get_expected_display("0") == ""
-        
+
         # But check_answer uses Matchers.exact("back") which accesses data_item["back"] directly
         with pytest.raises(KeyError):
             p.check_answer("0", "anything")
+
 
 class TestMatchersCornerCases:
     def test_missing_key_raises_keyerror(self):
