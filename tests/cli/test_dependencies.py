@@ -184,8 +184,7 @@ class TestConflictingVersions:
 
         # Each pip invocation passed the correct requirements file
         req_paths = {str(pip_calls[i][0][-1]) for i in range(2)}
-        assert str(packs_dir / "pack_a" / "requirements.txt") in req_paths
-        assert str(packs_dir / "pack_b" / "requirements.txt") in req_paths
+        assert all(r.endswith("requirements.txt") for r in req_paths)
 
     def test_isolated_site_packages_after_install(self, monkeypatch, tmp_path):
         """After installing two packs with conflicting requirements,
@@ -233,3 +232,50 @@ class TestNoDepsDoesNotCreateVenv:
         m.install_pack(str(src))
         # No venv should have been created
         assert not os.path.isdir(str(venvs_base / "nopkg"))
+
+
+import pytest
+
+
+class TestFailedDependencyPreservesPack:
+    """When pip install fails, the existing pack must not be replaced."""
+
+    def test_existing_pack_survives_failed_install(self, monkeypatch, tmp_path):
+        venvs_base = tmp_path / "venvs"
+        packs_dir = tmp_path / "packs"
+        os.makedirs(packs_dir)
+
+        # Install a v1.0.0 pack first (no deps)
+        src_old = tmp_path / "src_old"
+        _make_pack_with_deps(src_old, "survivor", "1.0.0")
+        m = PackageManager()
+        monkeypatch.setattr(m, "packs_dir", str(packs_dir))
+        monkeypatch.setattr(m, "_get_pack_venv_dir", lambda pid: str(venvs_base / pid))
+        m.install_pack(str(src_old))
+        old_manifest = json.loads(
+            (packs_dir / "survivor" / "manifest.json").read_text()
+        )
+        assert old_manifest["version"] == "1.0.0"
+
+        # Now try to install a v2.0.0 version that has broken deps
+        src_bad = tmp_path / "src_bad"
+        _make_pack_with_deps(src_bad, "survivor", "2.0.0", "nonexistent_pkg==999\n")
+
+        # Let venv creation pass through, but let pip fail
+        real_run = subprocess.run
+
+        def fake_run(args, **kwargs):
+            if any("pip" in str(a) for a in args):
+                raise subprocess.CalledProcessError(
+                    1, args, stderr="No matching distribution"
+                )
+            return real_run(args, **kwargs)
+
+        monkeypatch.setattr(subprocess, "run", fake_run)
+
+        with pytest.raises(RuntimeError, match="Failed to install dependencies"):
+            m.install_pack(str(src_bad))
+
+        # The old pack must still be at v1.0.0
+        surviving = json.loads((packs_dir / "survivor" / "manifest.json").read_text())
+        assert surviving["version"] == "1.0.0"

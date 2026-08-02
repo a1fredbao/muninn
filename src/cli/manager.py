@@ -396,6 +396,11 @@ class Plugin(DataPlugin):
             with open(manifest_path, "w", encoding="utf-8") as f:
                 json.dump(manifest, f, indent=4, ensure_ascii=False)
 
+        # Install dependencies *before* replacing the existing pack so
+        # that a failed pip install does not leave the pack in a broken
+        # state or destroy the previous version.
+        self._install_pack_dependencies(temp_dir, pack_id)
+
         target_dir = self._get_pack_dir(pack_id)
         if os.path.exists(target_dir):
             print(f"🔄 Updating existing pack: {pack_id}")
@@ -403,9 +408,6 @@ class Plugin(DataPlugin):
 
         # Ensure temp_dir parent is writable for shutil.move
         shutil.move(temp_dir, target_dir)
-
-        # Install plugin dependencies from requirements.txt if present
-        self._install_pack_dependencies(target_dir, pack_id)
 
         return pack_id
 
@@ -480,9 +482,9 @@ class Plugin(DataPlugin):
                 text=True,
             )
         except subprocess.CalledProcessError as exc:
-            print(f"⚠️  Failed to install dependencies: {exc.stderr.strip()}")
-            print("    The pack may still work if the required packages are")
-            print("    already available in your Python environment.")
+            raise RuntimeError(
+                f"Failed to install dependencies for '{pack_id}': {exc.stderr.strip()}"
+            ) from exc
 
     # ------------------------------------------------------------------
     # Internal: upgrade helpers
