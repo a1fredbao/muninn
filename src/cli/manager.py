@@ -15,6 +15,9 @@ from ..core.base_plugin import BaseRecitePlugin
 # Timeout for remote pack downloads (in seconds)
 DOWNLOAD_TIMEOUT = 30
 
+# Timeout for subprocess operations (venv creation, pip install) in seconds
+SUBPROCESS_TIMEOUT = 300
+
 
 class PackageManager:
     def __init__(self):
@@ -24,6 +27,34 @@ class PackageManager:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _validate_pack_id(pack_id: str) -> None:
+        """Validate that pack_id is safe to use in filesystem paths.
+
+        Raises ValueError if pack_id contains path traversal sequences
+        or other unsafe characters.
+        """
+        if not isinstance(pack_id, str):
+            raise ValueError(f"pack_id must be a string, got {type(pack_id).__name__}")
+
+        if not pack_id:
+            raise ValueError("pack_id cannot be empty")
+
+        # Check for path traversal attempts
+        if pack_id in (".", ".."):
+            raise ValueError(f"Invalid pack_id: '{pack_id}' is not allowed")
+
+        # Check for path separators
+        if os.sep in pack_id or "/" in pack_id or "\\" in pack_id:
+            raise ValueError(f"Invalid pack_id: '{pack_id}' must not contain path separators")
+
+        # Enforce alphanumeric, dots, underscores, and hyphens only
+        if not re.match(r"^[A-Za-z0-9._-]+$", pack_id):
+            raise ValueError(
+                f"Invalid pack_id: '{pack_id}' must contain only alphanumeric characters, "
+                "dots, underscores, and hyphens"
+            )
 
     def install_pack(self, source: str) -> str:
         """Install a pack from a local directory, a zip file, or a GitHub URL.
@@ -55,10 +86,17 @@ class PackageManager:
 
     def uninstall_pack(self, pack_id: str):
         """Remove a pack from the local packs directory."""
+        self._validate_pack_id(pack_id)
         pack_dir = self._get_pack_dir(pack_id)
         if not os.path.exists(pack_dir):
             raise FileNotFoundError(f"Pack '{pack_id}' is not installed.")
         shutil.rmtree(pack_dir)
+
+        # Also remove the per-pack virtual environment if it exists
+        venv_dir = self._get_pack_venv_dir(pack_id)
+        if os.path.exists(venv_dir):
+            shutil.rmtree(venv_dir, ignore_errors=True)
+
         print(f"🗑️  Pack '{pack_id}' has been uninstalled.")
 
     def upgrade_pack(self, pack_id: str) -> bool:
@@ -66,6 +104,7 @@ class PackageManager:
 
         Returns ``True`` if an upgrade was performed, ``False`` otherwise.
         """
+        self._validate_pack_id(pack_id)
         manifest = self._read_installed_manifest(pack_id)
         if manifest is None:
             raise FileNotFoundError(f"Pack '{pack_id}' is not installed.")
@@ -122,6 +161,7 @@ class PackageManager:
 
     def load_plugin(self, pack_id: str) -> BaseRecitePlugin:
         """Dynamically load the plugin.py from the pack_id directory."""
+        self._validate_pack_id(pack_id)
         pack_dir = self._get_pack_dir(pack_id)
         if not os.path.exists(pack_dir):
             raise FileNotFoundError(f"Pack '{pack_id}' not found.")
@@ -131,7 +171,7 @@ class PackageManager:
             raise FileNotFoundError(f"plugin.py not found in {pack_id}.")
 
         orig_sys_path = sys.path.copy()
-        # Make shared-venv packages importable (e.g. openai, httpx)
+        # Make packages from the pack's isolated virtual environment importable (e.g. openai, httpx)
         venv_site = self._get_pack_site_packages(pack_id)
         if os.path.isdir(venv_site):
             sys.path.insert(0, venv_site)
@@ -390,6 +430,13 @@ class Plugin(DataPlugin):
             shutil.rmtree(temp_dir, ignore_errors=True)
             raise ValueError("Invalid manifest: missing 'id'")
 
+        # Validate pack_id to prevent path traversal attacks
+        try:
+            self._validate_pack_id(pack_id)
+        except ValueError as e:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            raise ValueError(f"Invalid manifest: {e}") from e
+
         # Inject source tracking info before writing
         if source_info:
             manifest["source"] = source_info
@@ -441,7 +488,13 @@ class Plugin(DataPlugin):
                 check=True,
                 capture_output=True,
                 text=True,
+                timeout=SUBPROCESS_TIMEOUT,
             )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"Timed out creating dependency environment at '{venv_dir}' "
+                f"after {SUBPROCESS_TIMEOUT} seconds"
+            ) from exc
         except subprocess.CalledProcessError as exc:
             raise RuntimeError(
                 "Failed to create dependency environment at "
@@ -480,7 +533,12 @@ class Plugin(DataPlugin):
                 check=True,
                 capture_output=True,
                 text=True,
+                timeout=SUBPROCESS_TIMEOUT,
             )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"Timed out installing dependencies for '{pack_id}' after {SUBPROCESS_TIMEOUT} seconds"
+            ) from exc
         except subprocess.CalledProcessError as exc:
             raise RuntimeError(
                 f"Failed to install dependencies for '{pack_id}': {exc.stderr.strip()}"
