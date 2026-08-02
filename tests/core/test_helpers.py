@@ -278,3 +278,37 @@ class TestFlashcardPlugin:
 
         with pytest.raises(ValueError, match="Unsupported DATA_FILE"):
             BadFlashcard(tmp_workspace)
+
+    def test_missing_back_key_raises_keyerror(self, tmp_workspace):
+        json_path = os.path.join(tmp_workspace, "words.json")
+        with open(json_path, "w", encoding="utf-8") as f:
+            json.dump([{"front": "cat"}], f)  # Missing "back"
+
+        p = _JsonFlashcard(tmp_workspace)
+        # render_statement and get_expected_display use .get("back", ""), so they won't raise
+        assert p.render_statement("0") == "【闪卡】 cat"
+        assert p.get_expected_display("0") == ""
+
+        # But check_answer uses Matchers.exact("back") which accesses data_item["back"] directly
+        with pytest.raises(KeyError):
+            p.check_answer("0", "anything")
+
+
+class TestMatchersCornerCases:
+    def test_missing_key_raises_keyerror(self):
+        m1 = Matchers.exact("key")
+        m2 = Matchers.exact_integer("key")
+        m3 = Matchers.case_insensitive("key")
+        m4 = Matchers.chinese_symbol_pair("key1", "key2")
+        m5 = Matchers.any_order("key1", "key2")
+
+        with pytest.raises(KeyError):
+            m1({}, "val")
+        with pytest.raises(KeyError):
+            m2({}, "123")
+        with pytest.raises(KeyError):
+            m3({}, "val")
+        with pytest.raises(KeyError):
+            m4({"key1": "A"}, "val")  # Missing key2
+        with pytest.raises(KeyError):
+            m5({"key1": "A"}, "val")  # Missing key2

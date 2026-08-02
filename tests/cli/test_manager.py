@@ -170,6 +170,45 @@ class TestUninstallPack:
         with pytest.raises(FileNotFoundError, match="not installed"):
             m.uninstall_pack("nonexistent")
 
+    def test_uninstall_removes_venv(self, tmp_workspace, monkeypatch):
+        """Verify that uninstall_pack removes the per-pack virtual environment."""
+        src = os.path.join(tmp_workspace, "packwithvenv")
+        _make_minimal_pack(src, pack_id="packwithvenv")
+
+        # Add a requirements.txt to trigger venv creation
+        with open(os.path.join(src, "requirements.txt"), "w") as f:
+            f.write("# empty requirements\n")
+
+        packs_dir = os.path.join(tmp_workspace, "fake_muninn", "packs")
+        venvs_dir = os.path.join(tmp_workspace, "fake_muninn", "venvs")
+        os.makedirs(packs_dir, exist_ok=True)
+        os.makedirs(venvs_dir, exist_ok=True)
+
+        m = PackageManager()
+        monkeypatch.setattr(m, "packs_dir", packs_dir)
+
+        # Mock _get_pack_venv_dir to use our test venvs_dir
+        original_get_venv = m._get_pack_venv_dir
+
+        def mock_get_venv(pack_id):
+            return os.path.join(venvs_dir, pack_id)
+
+        monkeypatch.setattr(m, "_get_pack_venv_dir", mock_get_venv)
+
+        # Install the pack (this will create the venv if requirements.txt exists)
+        m.install_pack(src)
+
+        # Verify venv was created
+        venv_dir = os.path.join(venvs_dir, "packwithvenv")
+        assert os.path.isdir(venv_dir), "venv should exist after install"
+
+        # Uninstall the pack
+        m.uninstall_pack("packwithvenv")
+
+        # Verify both pack_dir and venv_dir are removed
+        assert not os.path.exists(os.path.join(packs_dir, "packwithvenv"))
+        assert not os.path.exists(venv_dir), "venv should be removed after uninstall"
+
 
 class TestUpgrade:
     def test_upgrade_no_source_skips(self, monkeypatch, tmp_workspace):
@@ -322,3 +361,133 @@ class TestVersion:
         assert not PackageManager._is_newer("0.9.0", "1.0.0")
         assert PackageManager._is_newer("1.0.1", "1.0.0")
         assert PackageManager._is_newer("1.1.0", "1.0.9")
+
+    def test_version_tuple_corner_cases(self):
+        # Prefix handling
+        assert PackageManager._version_tuple("v1.0.0") == (1, 0, 0)
+        assert PackageManager._version_tuple("V2.1.3") == (2, 1, 3)
+        # Suffix handling
+        assert PackageManager._version_tuple("1.0.0-beta") == (1, 0, 0)
+        assert PackageManager._version_tuple("1.2.3.alpha4") == (1, 2, 3)
+        # Short versions
+        assert PackageManager._version_tuple("1.0") == (1, 0, 0)
+        assert PackageManager._version_tuple("2") == (2, 0, 0)
+        # Invalid / unexpected formats gracefully falling back
+        assert PackageManager._version_tuple("v.1.0") == (0, 0, 0)
+        assert PackageManager._version_tuple("version-1.0") == (0, 0, 0)
+        assert PackageManager._version_tuple("1.b.c") == (1, 0, 0)
+
+
+class TestPackIdValidation:
+    def test_valid_pack_ids(self):
+        """Test that valid pack_ids are accepted."""
+        m = PackageManager()
+        # These should not raise
+        m._validate_pack_id("my-pack")
+        m._validate_pack_id("my_pack")
+        m._validate_pack_id("my.pack")
+        m._validate_pack_id("MyPack123")
+        m._validate_pack_id("pack-1.0.0")
+        m._validate_pack_id("pack_with_underscores")
+
+    def test_rejects_path_traversal(self):
+        """Test that path traversal attempts are rejected."""
+        m = PackageManager()
+        with pytest.raises(ValueError, match="not allowed"):
+            m._validate_pack_id("..")
+        with pytest.raises(ValueError, match="not allowed"):
+            m._validate_pack_id(".")
+
+    def test_rejects_path_separators(self):
+        """Test that pack_ids with path separators are rejected."""
+        m = PackageManager()
+        with pytest.raises(ValueError, match="path separators"):
+            m._validate_pack_id("../malicious")
+        with pytest.raises(ValueError, match="path separators"):
+            m._validate_pack_id("path/to/pack")
+        with pytest.raises(ValueError, match="path separators"):
+            m._validate_pack_id("path\\to\\pack")
+
+    def test_rejects_invalid_characters(self):
+        """Test that pack_ids with invalid characters are rejected."""
+        m = PackageManager()
+        with pytest.raises(ValueError, match="alphanumeric"):
+            m._validate_pack_id("pack with spaces")
+        with pytest.raises(ValueError, match="alphanumeric"):
+            m._validate_pack_id("pack@version")
+        with pytest.raises(ValueError, match="alphanumeric"):
+            m._validate_pack_id("pack$name")
+
+    def test_rejects_empty_pack_id(self):
+        """Test that empty pack_id is rejected."""
+        m = PackageManager()
+        with pytest.raises(ValueError, match="cannot be empty"):
+            m._validate_pack_id("")
+
+    def test_uninstall_validates_pack_id(self, tmp_workspace, monkeypatch):
+        """Test that uninstall_pack validates pack_id."""
+        packs_dir = os.path.join(tmp_workspace, "packs")
+        os.makedirs(packs_dir, exist_ok=True)
+        m = PackageManager()
+        monkeypatch.setattr(m, "packs_dir", packs_dir)
+        with pytest.raises(ValueError, match="path separators"):
+            m.uninstall_pack("../malicious")
+
+    def test_load_plugin_validates_pack_id(self):
+        """Test that load_plugin validates pack_id."""
+        m = PackageManager()
+        with pytest.raises(ValueError, match="path separators"):
+            m.load_plugin("../malicious")
+
+    def test_upgrade_pack_validates_pack_id(self):
+        """Test that upgrade_pack validates pack_id."""
+        m = PackageManager()
+        with pytest.raises(ValueError, match="path separators"):
+            m.upgrade_pack("../malicious")
+
+    def test_install_rejects_malicious_manifest(self, tmp_workspace, monkeypatch):
+        """Test that install_pack rejects packs with malicious pack_id in manifest."""
+        src = os.path.join(tmp_workspace, "malicious")
+        os.makedirs(src, exist_ok=True)
+        # Create manifest with path traversal in id
+        manifest = {
+            "id": "../escape",
+            "name": "Malicious Pack",
+            "author": "Attacker",
+            "version": "1.0.0",
+            "description": "Malicious pack",
+        }
+        with open(os.path.join(src, "manifest.json"), "w", encoding="utf-8") as f:
+            json.dump(manifest, f, indent=4)
+
+        packs_dir = os.path.join(tmp_workspace, "fake_muninn", "packs")
+        os.makedirs(packs_dir, exist_ok=True)
+        m = PackageManager()
+        monkeypatch.setattr(m, "packs_dir", packs_dir)
+
+        with pytest.raises(ValueError, match="Invalid manifest"):
+            m.install_pack(src)
+
+
+class TestLoadPluginCornerCases:
+    def test_raises_if_no_valid_subclass(self, tmp_workspace, monkeypatch):
+        src = os.path.join(tmp_workspace, "badpack")
+        os.makedirs(src, exist_ok=True)
+        manifest = {"id": "badpack", "version": "1.0.0"}
+        with open(os.path.join(src, "manifest.json"), "w") as f:
+            json.dump(manifest, f)
+
+        # Plugin that doesn't subclass BaseRecitePlugin
+        with open(os.path.join(src, "plugin.py"), "w") as f:
+            f.write("class Plugin:\n    pass\n")
+
+        packs_dir = os.path.join(tmp_workspace, "fake_muninn", "packs")
+        os.makedirs(packs_dir, exist_ok=True)
+        m = PackageManager()
+        monkeypatch.setattr(m, "packs_dir", packs_dir)
+        m.install_pack(src)
+
+        with pytest.raises(
+            ValueError, match="No valid BaseRecitePlugin subclass found"
+        ):
+            m.load_plugin("badpack")

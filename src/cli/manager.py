@@ -3,7 +3,9 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
+import sysconfig
 import tempfile
 import urllib.request
 import zipfile
@@ -12,6 +14,9 @@ from ..core.base_plugin import BaseRecitePlugin
 
 # Timeout for remote pack downloads (in seconds)
 DOWNLOAD_TIMEOUT = 30
+
+# Timeout for subprocess operations (venv creation, pip install) in seconds
+SUBPROCESS_TIMEOUT = 300
 
 
 class PackageManager:
@@ -22,6 +27,36 @@ class PackageManager:
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _validate_pack_id(pack_id: str) -> None:
+        """Validate that pack_id is safe to use in filesystem paths.
+
+        Raises ValueError if pack_id contains path traversal sequences
+        or other unsafe characters.
+        """
+        if not isinstance(pack_id, str):
+            raise TypeError(f"pack_id must be a string, got {type(pack_id).__name__}")
+
+        if not pack_id:
+            raise ValueError("pack_id cannot be empty")
+
+        # Check for path traversal attempts
+        if pack_id in (".", ".."):
+            raise ValueError(f"Invalid pack_id: '{pack_id}' is not allowed")
+
+        # Check for path separators
+        if os.sep in pack_id or "/" in pack_id or "\\" in pack_id:
+            raise ValueError(
+                f"Invalid pack_id: '{pack_id}' must not contain path separators"
+            )
+
+        # Enforce alphanumeric, dots, underscores, and hyphens only
+        if not re.match(r"^[A-Za-z0-9._-]+$", pack_id):
+            raise ValueError(
+                f"Invalid pack_id: '{pack_id}' must contain only alphanumeric characters, "
+                "dots, underscores, and hyphens"
+            )
 
     def install_pack(self, source: str) -> str:
         """Install a pack from a local directory, a zip file, or a GitHub URL.
@@ -53,10 +88,17 @@ class PackageManager:
 
     def uninstall_pack(self, pack_id: str):
         """Remove a pack from the local packs directory."""
+        self._validate_pack_id(pack_id)
         pack_dir = self._get_pack_dir(pack_id)
         if not os.path.exists(pack_dir):
             raise FileNotFoundError(f"Pack '{pack_id}' is not installed.")
         shutil.rmtree(pack_dir)
+
+        # Also remove the per-pack virtual environment if it exists
+        venv_dir = self._get_pack_venv_dir(pack_id)
+        if os.path.exists(venv_dir):
+            shutil.rmtree(venv_dir, ignore_errors=True)
+
         print(f"🗑️  Pack '{pack_id}' has been uninstalled.")
 
     def upgrade_pack(self, pack_id: str) -> bool:
@@ -64,6 +106,7 @@ class PackageManager:
 
         Returns ``True`` if an upgrade was performed, ``False`` otherwise.
         """
+        self._validate_pack_id(pack_id)
         manifest = self._read_installed_manifest(pack_id)
         if manifest is None:
             raise FileNotFoundError(f"Pack '{pack_id}' is not installed.")
@@ -120,6 +163,7 @@ class PackageManager:
 
     def load_plugin(self, pack_id: str) -> BaseRecitePlugin:
         """Dynamically load the plugin.py from the pack_id directory."""
+        self._validate_pack_id(pack_id)
         pack_dir = self._get_pack_dir(pack_id)
         if not os.path.exists(pack_dir):
             raise FileNotFoundError(f"Pack '{pack_id}' not found.")
@@ -127,6 +171,12 @@ class PackageManager:
         plugin_path = os.path.join(pack_dir, "plugin.py")
         if not os.path.exists(plugin_path):
             raise FileNotFoundError(f"plugin.py not found in {pack_id}.")
+
+        orig_sys_path = sys.path.copy()
+        # Make packages from the pack's isolated virtual environment importable (e.g. openai, httpx)
+        venv_site = self._get_pack_site_packages(pack_id)
+        if os.path.isdir(venv_site):
+            sys.path.insert(0, venv_site)
 
         src_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         sys.path.insert(0, src_dir)
@@ -152,7 +202,7 @@ class PackageManager:
                 f"No valid BaseRecitePlugin subclass found in {plugin_path}"
             )
         finally:
-            sys.path.pop(0)
+            sys.path[:] = orig_sys_path
 
     def list_packs(self):
         packs = []
@@ -382,11 +432,23 @@ class Plugin(DataPlugin):
             shutil.rmtree(temp_dir, ignore_errors=True)
             raise ValueError("Invalid manifest: missing 'id'")
 
+        # Validate pack_id to prevent path traversal attacks
+        try:
+            self._validate_pack_id(pack_id)
+        except ValueError as e:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            raise ValueError(f"Invalid manifest: {e}") from e
+
         # Inject source tracking info before writing
         if source_info:
             manifest["source"] = source_info
             with open(manifest_path, "w", encoding="utf-8") as f:
                 json.dump(manifest, f, indent=4, ensure_ascii=False)
+
+        # Install dependencies *before* replacing the existing pack so
+        # that a failed pip install does not leave the pack in a broken
+        # state or destroy the previous version.
+        self._install_pack_dependencies(temp_dir, pack_id)
 
         target_dir = self._get_pack_dir(pack_id)
         if os.path.exists(target_dir):
@@ -395,10 +457,99 @@ class Plugin(DataPlugin):
 
         # Ensure temp_dir parent is writable for shutil.move
         shutil.move(temp_dir, target_dir)
+
         return pack_id
 
     # ------------------------------------------------------------------
+    # Internal: per-pack dependency management
+    # ------------------------------------------------------------------
+    # Each pack that declares a ``requirements.txt`` gets its own
+    # isolated venv under ``~/.muninn/venvs/<pack_id>/``.  This
+    # prevents version conflicts between packs.
+
+    def _get_pack_venv_dir(self, pack_id: str) -> str:
+        """Return the path to the isolated venv for *pack_id*."""
+        return os.path.join(os.path.expanduser("~/.muninn/venvs"), pack_id)
+
+    def _ensure_pack_venv(self, pack_id: str) -> str:
+        """Return the path to the Python interpreter inside *pack_id*'s
+        isolated venv, creating the venv if it doesn't already exist."""
+        venv_dir = self._get_pack_venv_dir(pack_id)
+        exe_name = os.path.basename(sys.executable)
+        python_exe = os.path.join(
+            venv_dir,
+            "Scripts" if os.name == "nt" else "bin",
+            exe_name,
+        )
+        if os.path.isfile(python_exe):
+            return python_exe
+
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "venv", "--clear", venv_dir],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=SUBPROCESS_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"Timed out creating dependency environment at '{venv_dir}' "
+                f"after {SUBPROCESS_TIMEOUT} seconds"
+            ) from exc
+        except subprocess.CalledProcessError as exc:
+            raise RuntimeError(
+                "Failed to create dependency environment at "
+                f"'{venv_dir}'.  Your Python installation may "
+                "not include 'venv' (try 'apt install python3-venv' "
+                f"on Debian/Ubuntu).  Original error: {exc.stderr.strip()}"
+            ) from exc
+        return python_exe
+
+    def _get_pack_site_packages(self, pack_id: str) -> str:
+        """Return the site-packages directory for *pack_id*'s venv."""
+        return sysconfig.get_path(
+            "purelib",
+            scheme="venv",
+            vars={"base": self._get_pack_venv_dir(pack_id)},
+        )
+
+    def _install_pack_dependencies(self, pack_dir: str, pack_id: str) -> None:
+        """If *pack_dir* contains a ``requirements.txt``, install its
+        contents into the pack's isolated venv."""
+        req_path = os.path.join(pack_dir, "requirements.txt")
+        if not os.path.isfile(req_path):
+            return
+
+        # Skip empty requirements files --- venv creation would be wasteful.
+        if os.path.getsize(req_path) == 0:
+            return
+
+        venv_python = self._ensure_pack_venv(pack_id)
+        pip = os.path.join(os.path.dirname(venv_python), "pip")
+
+        print(f"📦 Installing dependencies for '{pack_id}' ...")
+        try:
+            subprocess.run(
+                [pip, "install", "--quiet", "-r", req_path],
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=SUBPROCESS_TIMEOUT,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                f"Timed out installing dependencies for '{pack_id}' after {SUBPROCESS_TIMEOUT} seconds"
+            ) from exc
+        except subprocess.CalledProcessError as exc:
+            raise RuntimeError(
+                f"Failed to install dependencies for '{pack_id}': {exc.stderr.strip()}"
+            ) from exc
+
+    # ------------------------------------------------------------------
     # Internal: upgrade helpers
+    # ------------------------------------------------------------------
+
     # ------------------------------------------------------------------
 
     def _read_installed_manifest(self, pack_id: str) -> dict | None:

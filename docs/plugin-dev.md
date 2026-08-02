@@ -23,10 +23,11 @@ full control.
 
 ``` bash
 my-pack/
-├── manifest.json   # Package metadata
-├── plugin.py        # Core logic
-├── data.csv         # Static data (optional — whatever your plugin needs)
-└── data.json        # Alternative data format
+├── manifest.json       # Package metadata
+├── plugin.py           # Core logic
+├── requirements.txt    # Optional: pip dependencies
+├── data.csv            # Static data (optional — whatever your plugin needs)
+└── data.json           # Alternative data format
 ```
 
 ## manifest.json
