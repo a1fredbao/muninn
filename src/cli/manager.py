@@ -3,7 +3,9 @@ import json
 import os
 import re
 import shutil
+import subprocess
 import sys
+import sysconfig
 import tempfile
 import urllib.request
 import zipfile
@@ -18,6 +20,7 @@ class PackageManager:
     def __init__(self):
         self.packs_dir = os.path.expanduser("~/.muninn/packs")
         os.makedirs(self.packs_dir, exist_ok=True)
+        self.venv_dir = os.path.expanduser("~/.muninn/venv")
 
     # ------------------------------------------------------------------
     # Public API
@@ -127,6 +130,11 @@ class PackageManager:
         plugin_path = os.path.join(pack_dir, "plugin.py")
         if not os.path.exists(plugin_path):
             raise FileNotFoundError(f"plugin.py not found in {pack_id}.")
+
+        # Make shared-venv packages importable (e.g. openai, httpx)
+        venv_site = self._get_venv_site_packages()
+        if os.path.isdir(venv_site):
+            sys.path.insert(0, venv_site)
 
         src_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         sys.path.insert(0, src_dir)
@@ -395,10 +403,84 @@ class Plugin(DataPlugin):
 
         # Ensure temp_dir parent is writable for shutil.move
         shutil.move(temp_dir, target_dir)
+
+        # Install plugin dependencies from requirements.txt if present
+        self._install_pack_dependencies(target_dir)
+
         return pack_id
 
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Internal: shared-venv dependency management
+    # ------------------------------------------------------------------
+
+    def _ensure_venv(self) -> str:
+        """Return the path to ``~/.muninn/venv/bin/python`` (or the
+        Windows equivalent), creating the venv if it doesn't already
+        exist."""
+        python_exe = os.path.join(
+            self.venv_dir,
+            "Scripts" if os.name == "nt" else "bin",
+            "python",
+        )
+        if os.path.isfile(python_exe):
+            return python_exe
+
+        try:
+            subprocess.run(
+                [sys.executable, "-m", "venv", "--clear", self.venv_dir],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            raise RuntimeError(
+                "Failed to create shared dependency environment at "
+                f"'{self.venv_dir}'.  Your Python installation may "
+                "not include 'venv' (try 'apt install python3-venv' "
+                f"on Debian/Ubuntu).  Original error: {exc.stderr.strip()}"
+            ) from exc
+        return python_exe
+
+    def _get_venv_site_packages(self) -> str:
+        """Return the site-packages directory inside the shared venv."""
+        return sysconfig.get_path(
+            "purelib", scheme="venv", vars={"base": self.venv_dir}
+        )
+
+    def _install_pack_dependencies(self, pack_dir: str) -> None:
+        """If *pack_dir* contains a ``requirements.txt``, install its
+        contents into the shared ``~/.muninn/venv``."""
+        req_path = os.path.join(pack_dir, "requirements.txt")
+        if not os.path.isfile(req_path):
+            return
+
+        # Skip empty requirements files
+        if os.path.getsize(req_path) == 0:
+            return
+
+        venv_python = self._ensure_venv()
+        pip = os.path.join(os.path.dirname(venv_python), "pip")
+
+        # On Windows the executable is pip.exe, but subprocess handles
+        # the extension automatically via PATHEXT.
+        print(f"📦 Installing dependencies for '{os.path.basename(pack_dir)}' ...")
+        try:
+            subprocess.run(
+                [pip, "install", "--quiet", "-r", req_path],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+        except subprocess.CalledProcessError as exc:
+            print(f"⚠️  Failed to install dependencies: {exc.stderr.strip()}")
+            print("    The pack may still work if the required packages are")
+            print("    already available in your Python environment.")
+
+    # ------------------------------------------------------------------
     # Internal: upgrade helpers
+    # ------------------------------------------------------------------
+
     # ------------------------------------------------------------------
 
     def _read_installed_manifest(self, pack_id: str) -> dict | None:
