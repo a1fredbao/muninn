@@ -36,7 +36,7 @@ class PackageManager:
         or other unsafe characters.
         """
         if not isinstance(pack_id, str):
-            raise ValueError(f"pack_id must be a string, got {type(pack_id).__name__}")
+            raise TypeError(f"pack_id must be a string, got {type(pack_id).__name__}")
 
         if not pack_id:
             raise ValueError("pack_id cannot be empty")
@@ -47,7 +47,9 @@ class PackageManager:
 
         # Check for path separators
         if os.sep in pack_id or "/" in pack_id or "\\" in pack_id:
-            raise ValueError(f"Invalid pack_id: '{pack_id}' must not contain path separators")
+            raise ValueError(
+                f"Invalid pack_id: '{pack_id}' must not contain path separators"
+            )
 
         # Enforce alphanumeric, dots, underscores, and hyphens only
         if not re.match(r"^[A-Za-z0-9._-]+$", pack_id):
