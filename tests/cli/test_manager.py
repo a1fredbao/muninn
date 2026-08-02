@@ -322,3 +322,39 @@ class TestVersion:
         assert not PackageManager._is_newer("0.9.0", "1.0.0")
         assert PackageManager._is_newer("1.0.1", "1.0.0")
         assert PackageManager._is_newer("1.1.0", "1.0.9")
+
+    def test_version_tuple_corner_cases(self):
+        # Prefix handling
+        assert PackageManager._version_tuple("v1.0.0") == (1, 0, 0)
+        assert PackageManager._version_tuple("V2.1.3") == (2, 1, 3)
+        # Suffix handling
+        assert PackageManager._version_tuple("1.0.0-beta") == (1, 0, 0)
+        assert PackageManager._version_tuple("1.2.3.alpha4") == (1, 2, 3)
+        # Short versions
+        assert PackageManager._version_tuple("1.0") == (1, 0, 0)
+        assert PackageManager._version_tuple("2") == (2, 0, 0)
+        # Invalid / unexpected formats gracefully falling back
+        assert PackageManager._version_tuple("v.1.0") == (0, 0, 0)
+        assert PackageManager._version_tuple("version-1.0") == (0, 0, 0)
+        assert PackageManager._version_tuple("1.b.c") == (1, 0, 0)
+
+class TestLoadPluginCornerCases:
+    def test_raises_if_no_valid_subclass(self, tmp_workspace, monkeypatch):
+        src = os.path.join(tmp_workspace, "badpack")
+        os.makedirs(src, exist_ok=True)
+        manifest = {"id": "badpack", "version": "1.0.0"}
+        with open(os.path.join(src, "manifest.json"), "w") as f:
+            json.dump(manifest, f)
+        
+        # Plugin that doesn't subclass BaseRecitePlugin
+        with open(os.path.join(src, "plugin.py"), "w") as f:
+            f.write("class Plugin:\n    pass\n")
+
+        packs_dir = os.path.join(tmp_workspace, "fake_muninn", "packs")
+        os.makedirs(packs_dir, exist_ok=True)
+        m = PackageManager()
+        monkeypatch.setattr(m, "packs_dir", packs_dir)
+        m.install_pack(src)
+
+        with pytest.raises(ValueError, match="No valid BaseRecitePlugin subclass found"):
+            m.load_plugin("badpack")
