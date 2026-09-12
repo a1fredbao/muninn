@@ -32,19 +32,37 @@ pip install muninn-cli
 # 从 GitHub 安装一个题库包
 muninn install a1fredbao/muninn-chemistry-plugin
 
-# 开始背诵
+# 打开 Textual 题库主页面
+muninn
+
+# 或直接进入指定题库
 muninn run muninn-chemistry-plugin
 ```
 
 ## 命令一览
 
-| 命令                         |                                                          |
-| ---------------------------- | -------------------------------------------------------- |
-| `muninn install <source>`    | 安装题库包（本地目录、zip、GitHub URL 或 `user/repo`）。 |
-| `muninn uninstall <pack_id>` | 卸载题库包。                                             |
-| `muninn list`                | 列出已安装的题库包。                                     |
-| `muninn run <pack_id>`       | 开始背诵。                                               |
-| `muninn new <name>`          | 生成插件开发模板。                                       |
+| 命令                         | 说明                                                       |
+| ---------------------------- | ---------------------------------------------------------- |
+| `muninn`                     | 打开 Textual 题库主页与插件管理界面。                      |
+| `muninn install <source>`    | 安装题库包（本地目录、zip、GitHub URL 或 `user/repo`）。   |
+| `muninn uninstall <pack_id>` | 卸载题库包。                                               |
+| `muninn upgrade [pack_id]`   | 升级指定题库包或全部题库包。                               |
+| `muninn list`                | 使用传统 CLI 列出已安装的题库包。                          |
+| `muninn run <pack_id>`       | 直接进入指定题库的 Textual 学习页面。                      |
+| `muninn new <name>`          | 生成插件开发模板。                                         |
+
+Textual 主页面快捷键：
+
+| 按键      | 操作                     |
+| --------- | ------------------------ |
+| `Enter`   | 开始选中的题库           |
+| `i`       | 安装题库包               |
+| `u`       | 升级选中的题库包         |
+| `Shift+U` | 升级全部题库包           |
+| `d`       | 卸载选中的题库包         |
+| `n`       | 创建插件模板             |
+| `r`       | 刷新 metadata            |
+| `Ctrl+Q`  | 退出应用                 |
 
 ## 开发插件
 

@@ -19,6 +19,7 @@ classifiers = [
     "Topic :: Education",
 ]
 dependencies = [
+    "rich>=13.0.0",
     "textual>=8.2.8",
 ]
 

@@ -177,6 +177,7 @@ name = "muninn-cli"
 version = "0.3.1"
 source = { editable = "." }
 dependencies = [
+    { name = "rich" },
     { name = "textual" },
 ]
 
@@ -190,7 +191,10 @@ docs = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "textual", specifier = ">=8.2.8" }]
+requires-dist = [
+    { name = "rich", specifier = ">=13.0.0" },
+    { name = "textual", specifier = ">=8.2.8" },
+]
 
 [package.metadata.requires-dev]
 dev = [

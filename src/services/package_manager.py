@@ -7,8 +7,12 @@ import subprocess
 import sys
 import sysconfig
 import tempfile
+import threading
+import time
 import urllib.request
 import zipfile
+from collections.abc import Callable
+from dataclasses import dataclass
 
 from ..core.base_plugin import BaseRecitePlugin
 
@@ -17,6 +21,62 @@ DOWNLOAD_TIMEOUT = 30
 
 # Timeout for subprocess operations (venv creation, pip install) in seconds
 SUBPROCESS_TIMEOUT = 300
+
+
+@dataclass(frozen=True)
+class PackageProgress:
+    """A user-facing progress update emitted by package operations."""
+
+    message: str
+
+
+class OperationCancelled(RuntimeError):
+    """Raised when a cooperative cancellation request is observed."""
+
+
+class CancellationToken:
+    """Thread-safe cooperative cancellation primitive."""
+
+    def __init__(self) -> None:
+        self._event = threading.Event()
+
+    @property
+    def cancelled(self) -> bool:
+        return self._event.is_set()
+
+    def cancel(self) -> None:
+        self._event.set()
+
+    def raise_if_cancelled(self) -> None:
+        if self.cancelled:
+            raise OperationCancelled("Operation cancelled.")
+
+
+@dataclass(frozen=True)
+class UpgradeResult:
+    """Structured result for one package upgrade."""
+
+    pack_id: str
+    status: str
+    current_version: str | None = None
+    remote_version: str | None = None
+    error: str | None = None
+
+    @property
+    def upgraded(self) -> bool:
+        return self.status == "upgraded"
+
+    @property
+    def failed(self) -> bool:
+        return self.status == "failed"
+
+
+ProgressCallback = Callable[[PackageProgress], None]
+
+
+def _emit(progress: ProgressCallback | None, message: str) -> None:
+    if progress is not None:
+        progress(PackageProgress(message))
 
 
 class PackageManager:
@@ -58,7 +118,12 @@ class PackageManager:
                 "dots, underscores, and hyphens"
             )
 
-    def install_pack(self, source: str) -> str:
+    def install_pack(
+        self,
+        source: str,
+        progress: ProgressCallback | None = None,
+        cancel_token: CancellationToken | None = None,
+    ) -> str:
         """Install a pack from a local directory, a zip file, or a GitHub URL.
 
         Source formats::
@@ -75,20 +140,32 @@ class PackageManager:
         if self._is_url(source):
             resolved = self._resolve_download_url(source)
             source_info = self._github_source_key(source)
-            return self._install_remote(resolved, source_info)
+            return self._install_remote(
+                resolved,
+                source_info,
+                progress,
+                cancel_token,
+            )
 
         if self._is_github_short(source):
             url = self._github_short_to_url(source)
             source_info = f"github:{source}"
-            return self._install_remote(url, source_info)
+            return self._install_remote(url, source_info, progress, cancel_token)
 
         abs_path = os.path.abspath(source)
         source_info = f"local:{abs_path}"
-        return self._install_local(source, source_info)
+        return self._install_local(source, source_info, progress, cancel_token)
 
-    def uninstall_pack(self, pack_id: str):
+    def uninstall_pack(
+        self,
+        pack_id: str,
+        progress: ProgressCallback | None = None,
+        cancel_token: CancellationToken | None = None,
+    ) -> None:
         """Remove a pack from the local packs directory."""
         self._validate_pack_id(pack_id)
+        _emit(progress, f"Uninstalling pack '{pack_id}'.")
+        self._raise_if_cancelled(cancel_token)
         pack_dir = self._get_pack_dir(pack_id)
         if not os.path.exists(pack_dir):
             raise FileNotFoundError(f"Pack '{pack_id}' is not installed.")
@@ -99,67 +176,152 @@ class PackageManager:
         if os.path.exists(venv_dir):
             shutil.rmtree(venv_dir, ignore_errors=True)
 
-        print(f"🗑️  Pack '{pack_id}' has been uninstalled.")
-
-    def upgrade_pack(self, pack_id: str) -> bool:
+    def upgrade_pack(
+        self,
+        pack_id: str,
+        progress: ProgressCallback | None = None,
+        cancel_token: CancellationToken | None = None,
+    ) -> bool:
         """Upgrade *pack_id* if a newer version is available.
 
         Returns ``True`` if an upgrade was performed, ``False`` otherwise.
         """
+        return self.upgrade_pack_result(pack_id, progress, cancel_token).upgraded
+
+    def upgrade_pack_result(
+        self,
+        pack_id: str,
+        progress: ProgressCallback | None = None,
+        cancel_token: CancellationToken | None = None,
+    ) -> UpgradeResult:
+        """Return the detailed outcome for one package upgrade."""
+
         self._validate_pack_id(pack_id)
+        self._raise_if_cancelled(cancel_token)
         manifest = self._read_installed_manifest(pack_id)
         if manifest is None:
             raise FileNotFoundError(f"Pack '{pack_id}' is not installed.")
 
         source = manifest.get("source")
-        if not source:
-            print(f"⚠️  '{pack_id}' has no source recorded — cannot upgrade.")
-            return False
-
         current_ver = manifest.get("version")
+        if not source:
+            message = f"Pack '{pack_id}' has no source recorded; cannot upgrade."
+            _emit(progress, message)
+            return UpgradeResult(
+                pack_id=pack_id,
+                status="skipped",
+                current_version=current_ver,
+                error=message,
+            )
+
         if not current_ver:
-            print(f"⚠️  '{pack_id}' has no version in manifest — cannot upgrade.")
-            return False
+            message = f"Pack '{pack_id}' has no version in manifest; cannot upgrade."
+            _emit(progress, message)
+            return UpgradeResult(
+                pack_id=pack_id,
+                status="failed",
+                error=message,
+            )
 
         remote_manifest = self._fetch_remote_manifest(source)
 
         if remote_manifest is None:
-            print(
-                f"⚠️  Could not fetch remote manifest for '{pack_id}' — network error, missing path, or unsupported source."
+            message = (
+                f"Could not fetch remote manifest for '{pack_id}'; "
+                "network error, missing path, or unsupported source."
             )
-            return False
+            _emit(progress, message)
+            return UpgradeResult(
+                pack_id=pack_id,
+                status="failed",
+                current_version=current_ver,
+                error=message,
+            )
 
         remote_ver = remote_manifest.get("version")
         if not remote_ver:
-            print(
-                f"⚠️  Remote manifest for '{pack_id}' has no version — cannot upgrade."
+            message = (
+                f"Remote manifest for '{pack_id}' has no version; cannot upgrade."
             )
-            return False
+            _emit(progress, message)
+            return UpgradeResult(
+                pack_id=pack_id,
+                status="failed",
+                current_version=current_ver,
+                error=message,
+            )
+
         if self._is_newer(remote_ver, current_ver):
-            old_ver = current_ver
-            new_ver = remote_ver
-            print(f"⬆️  Upgrading '{pack_id}': {old_ver} → {new_ver}")
-            return self._reinstall_from_source(pack_id, source)
+            _emit(
+                progress,
+                f"Upgrading '{pack_id}': {current_ver} -> {remote_ver}",
+            )
+            upgraded = self._reinstall_from_source(
+                pack_id,
+                source,
+                progress,
+                cancel_token,
+            )
+            return UpgradeResult(
+                pack_id=pack_id,
+                status="upgraded" if upgraded else "failed",
+                current_version=current_ver,
+                remote_version=remote_ver,
+                error=None if upgraded else "Upgrade source is unavailable.",
+            )
 
-        print(f"✅ '{pack_id}' ({current_ver}) is already up to date.")
-        return False
+        _emit(progress, f"Pack '{pack_id}' ({current_ver}) is already up to date.")
+        return UpgradeResult(
+            pack_id=pack_id,
+            status="current",
+            current_version=current_ver,
+            remote_version=remote_ver,
+        )
 
-    def upgrade_all(self) -> dict[str, bool]:
+    def upgrade_all_results(
+        self,
+        progress: ProgressCallback | None = None,
+        cancel_token: CancellationToken | None = None,
+    ) -> dict[str, UpgradeResult]:
+        """Upgrade every pack and return a detailed result for each one."""
+
+        results: dict[str, UpgradeResult] = {}
+        for pack in self.list_packs():
+            pack_id = pack.get("id", "unknown")
+            try:
+                results[pack_id] = self.upgrade_pack_result(
+                    pack_id,
+                    progress,
+                    cancel_token,
+                )
+            except OperationCancelled:
+                raise
+            except Exception as exc:  # noqa: BLE001
+                message = f"Failed to upgrade '{pack_id}': {exc}"
+                _emit(progress, message)
+                results[pack_id] = UpgradeResult(
+                    pack_id=pack_id,
+                    status="failed",
+                    error=message,
+                )
+        return results
+
+    def upgrade_all(
+        self,
+        progress: ProgressCallback | None = None,
+        cancel_token: CancellationToken | None = None,
+    ) -> dict[str, bool]:
         """Upgrade every installed pack that has a newer version available.
 
         Returns a mapping of ``pack_id → upgraded (bool)``.
         """
-        results: dict[str, bool] = {}
-        for pack in self.list_packs():
-            try:
-                pid = pack["id"]
-                results[pid] = self.upgrade_pack(pid)
-            except Exception as exc:  # noqa: BLE001
-                pid = pack.get("id", "unknown")
-                print(f"❌ Failed to upgrade '{pid}': {exc}")
-                if pid != "unknown":
-                    results[pid] = False
-        return results
+        return {
+            pack_id: result.upgraded
+            for pack_id, result in self.upgrade_all_results(
+                progress,
+                cancel_token,
+            ).items()
+        }
 
     def load_plugin(self, pack_id: str) -> BaseRecitePlugin:
         """Dynamically load the plugin.py from the pack_id directory."""
@@ -204,6 +366,16 @@ class PackageManager:
         finally:
             sys.path[:] = orig_sys_path
 
+    def ensure_pack_installed(self, pack_id: str) -> None:
+        """Validate that a pack and its plugin entry point exist."""
+
+        self._validate_pack_id(pack_id)
+        pack_dir = self._get_pack_dir(pack_id)
+        if not os.path.isdir(pack_dir):
+            raise FileNotFoundError(f"Pack '{pack_id}' not found.")
+        if not os.path.isfile(os.path.join(pack_dir, "plugin.py")):
+            raise FileNotFoundError(f"plugin.py not found in '{pack_id}'.")
+
     def list_packs(self):
         packs = []
         for pack_id in os.listdir(self.packs_dir):
@@ -217,12 +389,20 @@ class PackageManager:
                     packs.append(manifest)
         return packs
 
-    def create_template(self, pack_id: str, target_dir: str = "."):
+    def create_template(
+        self,
+        pack_id: str,
+        target_dir: str = ".",
+        progress: ProgressCallback | None = None,
+        cancel_token: CancellationToken | None = None,
+    ) -> str:
         """Generate a new plugin template."""
         pack_dir = os.path.join(target_dir, pack_id)
         if os.path.exists(pack_dir):
             raise FileExistsError(f"Directory {pack_dir} already exists.")
 
+        self._raise_if_cancelled(cancel_token)
+        _emit(progress, f"Creating template at {pack_dir}.")
         os.makedirs(pack_dir)
 
         manifest = {
@@ -259,7 +439,7 @@ class Plugin(DataPlugin):
         with open(os.path.join(pack_dir, "plugin.py"), "w", encoding="utf-8") as f:
             f.write(plugin_code)
 
-        print(f"✅ Template created at {pack_dir}")
+        return pack_dir
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -332,17 +512,30 @@ class Plugin(DataPlugin):
 
     # -- install backends --------------------------------------------------
 
-    def _install_local(self, source: str, source_info: str = "") -> str:
+    def _install_local(
+        self,
+        source: str,
+        source_info: str = "",
+        progress: ProgressCallback | None = None,
+        cancel_token: CancellationToken | None = None,
+    ) -> str:
         """Install from a local directory or zip file (existing logic)."""
         if not os.path.exists(source):
             raise FileNotFoundError(f"Path not found: {source}")
 
+        self._raise_if_cancelled(cancel_token)
+        _emit(progress, f"Installing pack from '{source}'.")
         temp_dir = None
         if os.path.isdir(source):
             temp_dir = tempfile.mkdtemp(dir=self.packs_dir, prefix=".temp_")
             try:
                 shutil.copytree(source, temp_dir, dirs_exist_ok=True)
-                pack_id = self._finalise_install(temp_dir, source_info)
+                pack_id = self._finalise_install(
+                    temp_dir,
+                    source_info,
+                    progress,
+                    cancel_token,
+                )
                 temp_dir = None  # Successfully finalized, don't clean up
             finally:
                 if temp_dir and os.path.exists(temp_dir):
@@ -352,7 +545,12 @@ class Plugin(DataPlugin):
             try:
                 with zipfile.ZipFile(source) as zf:
                     zf.extractall(temp_dir)
-                pack_id = self._finalise_install(temp_dir, source_info)
+                pack_id = self._finalise_install(
+                    temp_dir,
+                    source_info,
+                    progress,
+                    cancel_token,
+                )
                 temp_dir = None  # Successfully finalized, don't clean up
             finally:
                 if temp_dir and os.path.exists(temp_dir):
@@ -362,12 +560,18 @@ class Plugin(DataPlugin):
                 "Unsupported file format. Must be a directory or zip file."
             )
 
-        print(f"✅ Successfully installed pack '{pack_id}'")
         return pack_id
 
-    def _install_remote(self, url: str, source_info: str = "") -> str:
+    def _install_remote(
+        self,
+        url: str,
+        source_info: str = "",
+        progress: ProgressCallback | None = None,
+        cancel_token: CancellationToken | None = None,
+    ) -> str:
         """Download a remote zip and install it."""
-        print(f"⬇️  Downloading {url} ...")
+        self._raise_if_cancelled(cancel_token)
+        _emit(progress, f"Downloading {url}")
 
         # Download to a separate temporary file (not inside the staging directory)
         zip_fd, zip_path = tempfile.mkstemp(suffix=".zip", prefix=".pack_")
@@ -379,10 +583,15 @@ class Plugin(DataPlugin):
                     urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT) as resp,
                     os.fdopen(zip_fd, "wb") as f,
                 ):
-                    shutil.copyfileobj(resp, f)
+                    while chunk := resp.read(64 * 1024):
+                        self._raise_if_cancelled(cancel_token)
+                        f.write(chunk)
             except Exception as exc:
+                if isinstance(exc, OperationCancelled):
+                    raise
                 raise RuntimeError(f"Failed to download from {url}: {exc}") from exc
 
+            self._raise_if_cancelled(cancel_token)
             if not zipfile.is_zipfile(zip_path):
                 raise ValueError(
                     "Downloaded file is not a valid zip. "
@@ -394,9 +603,13 @@ class Plugin(DataPlugin):
             with zipfile.ZipFile(zip_path) as zf:
                 zf.extractall(temp_dir)
 
-            pack_id = self._finalise_install(temp_dir, source_info)
+            pack_id = self._finalise_install(
+                temp_dir,
+                source_info,
+                progress,
+                cancel_token,
+            )
             temp_dir = None  # Successfully finalized, don't clean up
-            print(f"✅ Successfully installed pack '{pack_id}'")
             return pack_id
         finally:
             # Clean up the downloaded zip file
@@ -406,8 +619,15 @@ class Plugin(DataPlugin):
             if temp_dir and os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
-    def _finalise_install(self, temp_dir: str, source_info: str = "") -> str:
+    def _finalise_install(
+        self,
+        temp_dir: str,
+        source_info: str = "",
+        progress: ProgressCallback | None = None,
+        cancel_token: CancellationToken | None = None,
+    ) -> str:
         """Validate manifest and move *temp_dir* into place.  Returns pack_id."""
+        self._raise_if_cancelled(cancel_token)
         # GitHub zip wraps everything in a top-level directory.
         # If the extracted temp_dir contains exactly one subdirectory and
         # no manifest at the root, peek inside it.
@@ -448,11 +668,17 @@ class Plugin(DataPlugin):
         # Install dependencies *before* replacing the existing pack so
         # that a failed pip install does not leave the pack in a broken
         # state or destroy the previous version.
-        self._install_pack_dependencies(temp_dir, pack_id)
+        self._install_pack_dependencies(
+            temp_dir,
+            pack_id,
+            progress,
+            cancel_token,
+        )
+        self._raise_if_cancelled(cancel_token)
 
         target_dir = self._get_pack_dir(pack_id)
         if os.path.exists(target_dir):
-            print(f"🔄 Updating existing pack: {pack_id}")
+            _emit(progress, f"Updating existing pack '{pack_id}'.")
             shutil.rmtree(target_dir)
 
         # Ensure temp_dir parent is writable for shutil.move
@@ -471,7 +697,11 @@ class Plugin(DataPlugin):
         """Return the path to the isolated venv for *pack_id*."""
         return os.path.join(os.path.expanduser("~/.muninn/venvs"), pack_id)
 
-    def _ensure_pack_venv(self, pack_id: str) -> str:
+    def _ensure_pack_venv(
+        self,
+        pack_id: str,
+        cancel_token: CancellationToken | None = None,
+    ) -> str:
         """Return the path to the Python interpreter inside *pack_id*'s
         isolated venv, creating the venv if it doesn't already exist."""
         venv_dir = self._get_pack_venv_dir(pack_id)
@@ -484,13 +714,12 @@ class Plugin(DataPlugin):
         if os.path.isfile(python_exe):
             return python_exe
 
+        self._raise_if_cancelled(cancel_token)
         try:
-            subprocess.run(
+            self._run_subprocess(
                 [sys.executable, "-m", "venv", "--clear", venv_dir],
-                check=True,
-                capture_output=True,
-                text=True,
                 timeout=SUBPROCESS_TIMEOUT,
+                cancel_token=cancel_token,
             )
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError(
@@ -514,7 +743,13 @@ class Plugin(DataPlugin):
             vars={"base": self._get_pack_venv_dir(pack_id)},
         )
 
-    def _install_pack_dependencies(self, pack_dir: str, pack_id: str) -> None:
+    def _install_pack_dependencies(
+        self,
+        pack_dir: str,
+        pack_id: str,
+        progress: ProgressCallback | None = None,
+        cancel_token: CancellationToken | None = None,
+    ) -> None:
         """If *pack_dir* contains a ``requirements.txt``, install its
         contents into the pack's isolated venv."""
         req_path = os.path.join(pack_dir, "requirements.txt")
@@ -525,17 +760,16 @@ class Plugin(DataPlugin):
         if os.path.getsize(req_path) == 0:
             return
 
-        venv_python = self._ensure_pack_venv(pack_id)
+        self._raise_if_cancelled(cancel_token)
+        venv_python = self._ensure_pack_venv(pack_id, cancel_token)
         pip = os.path.join(os.path.dirname(venv_python), "pip")
 
-        print(f"📦 Installing dependencies for '{pack_id}' ...")
+        _emit(progress, f"Installing dependencies for '{pack_id}'.")
         try:
-            subprocess.run(
+            self._run_subprocess(
                 [pip, "install", "--quiet", "-r", req_path],
-                check=True,
-                capture_output=True,
-                text=True,
                 timeout=SUBPROCESS_TIMEOUT,
+                cancel_token=cancel_token,
             )
         except subprocess.TimeoutExpired as exc:
             raise RuntimeError(
@@ -545,6 +779,76 @@ class Plugin(DataPlugin):
             raise RuntimeError(
                 f"Failed to install dependencies for '{pack_id}': {exc.stderr.strip()}"
             ) from exc
+
+    @staticmethod
+    def _raise_if_cancelled(cancel_token: CancellationToken | None) -> None:
+        if cancel_token is not None:
+            cancel_token.raise_if_cancelled()
+
+    def _run_subprocess(
+        self,
+        args: list[str],
+        *,
+        timeout: int,
+        cancel_token: CancellationToken | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        """Run a subprocess while observing cooperative cancellation.
+
+        Without a cancellation token this preserves the original
+        ``subprocess.run`` behavior and keeps existing integrations simple.
+        """
+
+        if cancel_token is None:
+            return subprocess.run(
+                args,
+                check=True,
+                capture_output=True,
+                text=True,
+                timeout=timeout,
+            )
+
+        process = subprocess.Popen(
+            args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        deadline = time.monotonic() + timeout
+        while process.poll() is None:
+            if cancel_token.cancelled:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait()
+                raise OperationCancelled("Operation cancelled.")
+            if time.monotonic() >= deadline:
+                process.kill()
+                stdout, stderr = process.communicate()
+                raise subprocess.TimeoutExpired(
+                    args,
+                    timeout,
+                    output=stdout,
+                    stderr=stderr,
+                )
+            time.sleep(0.05)
+
+        stdout, stderr = process.communicate()
+        completed = subprocess.CompletedProcess(
+            args,
+            process.returncode,
+            stdout,
+            stderr,
+        )
+        if process.returncode:
+            raise subprocess.CalledProcessError(
+                process.returncode,
+                args,
+                output=stdout,
+                stderr=stderr,
+            )
+        return completed
 
     # ------------------------------------------------------------------
     # Internal: upgrade helpers
@@ -637,22 +941,28 @@ class Plugin(DataPlugin):
             remote_ver
         ) > PackageManager._version_tuple(local_ver)
 
-    def _reinstall_from_source(self, pack_id: str, source: str) -> bool:
+    def _reinstall_from_source(
+        self,
+        pack_id: str,
+        source: str,
+        progress: ProgressCallback | None = None,
+        cancel_token: CancellationToken | None = None,
+    ) -> bool:
         """Re-install *pack_id* from its recorded *source*.
 
         Returns True if reinstallation succeeded, False otherwise.
         """
         if source.startswith("github:"):
             src = source.removeprefix("github:")
-            self.install_pack(src)
+            self.install_pack(src, progress, cancel_token)
             return True
         elif source.startswith("local:"):
             path = source.removeprefix("local:")
             if not os.path.exists(path):
-                print(f"⚠️  Source path '{path}' no longer exists — skipping.")
+                _emit(progress, f"Source path '{path}' no longer exists; skipping.")
                 return False
-            self.install_pack(path)
+            self.install_pack(path, progress, cancel_token)
             return True
         else:
-            print(f"⚠️  Unknown source format for '{pack_id}': {source}")
+            _emit(progress, f"Unknown source format for '{pack_id}': {source}")
             return False

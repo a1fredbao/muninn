@@ -1,4 +1,4 @@
-"""Tests for src/cli/manager.py."""
+"""Tests for src/services/package_manager.py."""
 
 import json
 import os
@@ -6,7 +6,7 @@ import shutil
 
 import pytest
 
-from src.cli.manager import PackageManager
+from src.services.package_manager import PackageManager
 
 # -----------------------------------------------------------------------
 # Helpers

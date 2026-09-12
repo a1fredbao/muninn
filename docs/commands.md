@@ -95,7 +95,17 @@ response time, favouring topics you struggle with.
 During a session:
 
 - Type your answer and press Enter.
-- Type `q` or press `Ctrl+C` to quit and see your session summary.
+- Wait while Muninn shows `Judging...` when a plugin performs a slow
+  synchronous or asynchronous answer check.
+- Press `Esc` to return to the pack library.
+- Press `Ctrl+Q` to review the session summary and quit.
+
+Run `muninn` without a subcommand to open the Textual pack library.  The
+library shows every pack's metadata and provides install, upgrade,
+uninstall, template creation, and refresh actions.  The install, upgrade,
+uninstall, list, and new subcommands continue to use the traditional CLI.
+Long-running management operations run in the background and provide a
+progress dialog with best-effort cancellation.
 
 ## `muninn new`
 

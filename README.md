@@ -32,19 +32,37 @@ pip install muninn-cli
 # Install a pack from GitHub
 muninn install a1fredbao/muninn-chemistry-plugin
 
-# Start reciting
+# Open the Textual library
+muninn
+
+# Or start a specific pack directly
 muninn run muninn-chemistry-plugin
 ```
 
 ## Commands
 
-| Command                      |                                                              |
-| ---------------------------- | ------------------------------------------------------------ |
-| `muninn install <source>`    | Install a pack (local dir, zip, GitHub URL, or `user/repo`). |
-| `muninn uninstall <pack_id>` | Remove a pack.                                               |
-| `muninn list`                | List installed packs.                                        |
-| `muninn run <pack_id>`       | Start a reciting session.                                    |
-| `muninn new <name>`          | Generate a plugin template.                                  |
+| Command                      |                                                               |
+| ---------------------------- | ------------------------------------------------------------- |
+| `muninn`                     | Open the Textual pack library and management UI.              |
+| `muninn install <source>`    | Install a pack (local dir, zip, GitHub URL, or `user/repo`).  |
+| `muninn uninstall <pack_id>` | Remove a pack.                                                |
+| `muninn upgrade [pack_id]`   | Upgrade one or all packs.                                     |
+| `muninn list`                | List installed packs in the traditional CLI.                  |
+| `muninn run <pack_id>`       | Open a Textual reciting session for one pack.                 |
+| `muninn new <name>`          | Generate a plugin template.                                   |
+
+In the Textual library:
+
+| Key       | Action                                      |
+| --------- | ------------------------------------------- |
+| `Enter`   | Start the selected pack                     |
+| `i`       | Install a pack                              |
+| `u`       | Upgrade the selected pack                   |
+| `Shift+U` | Upgrade all packs                           |
+| `d`       | Uninstall the selected pack                 |
+| `n`       | Create a plugin template                    |
+| `r`       | Refresh metadata                            |
+| `Ctrl+Q`  | Quit the application                        |
 
 ## Write a Plugin
 
