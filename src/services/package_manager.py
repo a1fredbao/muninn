@@ -240,9 +240,7 @@ class PackageManager:
 
         remote_ver = remote_manifest.get("version")
         if not remote_ver:
-            message = (
-                f"Remote manifest for '{pack_id}' has no version; cannot upgrade."
-            )
+            message = f"Remote manifest for '{pack_id}' has no version; cannot upgrade."
             _emit(progress, message)
             return UpgradeResult(
                 pack_id=pack_id,

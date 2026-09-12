@@ -102,9 +102,9 @@ def test_library_exposes_management_dialog_and_quit_binding():
             assert isinstance(app.screen, InstallDialog)
             dialog_region = app.screen.query_one(".dialog", Container).region
             assert dialog_region.x == (app.screen.size.width - dialog_region.width) // 2
-            assert dialog_region.y == (
-                app.screen.size.height - dialog_region.height
-            ) // 2
+            assert (
+                dialog_region.y == (app.screen.size.height - dialog_region.height) // 2
+            )
             app.screen.query_one("#install-source").value = "source-path"
             await pilot.press("enter")
             for _ in range(20):

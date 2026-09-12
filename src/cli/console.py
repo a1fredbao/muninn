@@ -29,9 +29,7 @@ class ConsolePresenter:
 
     def packs(self, packs: list[dict]) -> None:
         if not packs:
-            self.stdout.print(
-                "No packs installed yet. Use 'muninn install <source>'."
-            )
+            self.stdout.print("No packs installed yet. Use 'muninn install <source>'.")
             return
 
         table = Table(title=f"Installed Packs ({len(packs)})")

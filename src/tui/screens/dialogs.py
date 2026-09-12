@@ -52,8 +52,7 @@ class InstallDialog(ModalScreen[str | None]):
                 id="install-source",
             )
             yield Static(
-                "Examples: ./my-pack, user/repo@main, "
-                "https://github.com/user/repo",
+                "Examples: ./my-pack, user/repo@main, https://github.com/user/repo",
                 classes="dialog-help",
             )
             with Horizontal(classes="dialog-actions"):
@@ -169,9 +168,7 @@ class OperationDialog(ModalScreen[None]):
 class SessionSummaryDialog(ModalScreen[bool]):
     """Show the current session stats and offer continue or end."""
 
-    BINDINGS: ClassVar[list[BindingType]] = [
-        ("escape", "continue_session", "Continue")
-    ]
+    BINDINGS: ClassVar[list[BindingType]] = [("escape", "continue_session", "Continue")]
 
     def __init__(self, stats: StudyStats) -> None:
         super().__init__()

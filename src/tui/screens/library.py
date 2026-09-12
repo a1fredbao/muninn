@@ -114,9 +114,7 @@ class LibraryScreen(Screen[None]):
 
     def _clear_details(self) -> None:
         self.query_one("#pack-name", Static).update("No packs installed")
-        self.query_one("#pack-metadata", Static).update(
-            "Press i to install a pack."
-        )
+        self.query_one("#pack-metadata", Static).update("Press i to install a pack.")
         self.query_one("#pack-description", Static).update("")
 
     def on_data_table_row_highlighted(

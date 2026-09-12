@@ -127,9 +127,7 @@ class StudySession:
 
     def stats(self) -> StudyStats:
         avg_time = (
-            self.total_ac_time / self.total_ac_count
-            if self.total_ac_count > 0
-            else 0.0
+            self.total_ac_time / self.total_ac_count if self.total_ac_count > 0 else 0.0
         )
         return StudyStats(
             distinct_ac=self.distinct_ac,
