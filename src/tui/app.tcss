@@ -2,6 +2,10 @@ Screen {
     background: $surface;
 }
 
+ModalScreen {
+    align: center middle;
+}
+
 #library-body {
     height: 1fr;
 }
