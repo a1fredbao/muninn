@@ -17,7 +17,7 @@ class MuninnApp(App[None]):
 
     CSS_PATH = "app.tcss"
     TITLE = "Muninn"
-    SUB_TITLE = "Extensible Reciting"
+    SUB_TITLE = "An extensible reciting CLI"
 
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding(
