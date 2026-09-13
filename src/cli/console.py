@@ -5,6 +5,7 @@ from __future__ import annotations
 import sys
 
 from rich.console import Console
+from rich.markup import escape
 from rich.table import Table
 
 from ..services.package_manager import PackageProgress, UpgradeResult
@@ -16,16 +17,16 @@ class ConsolePresenter:
         self.stderr = Console(file=sys.stderr)
 
     def progress(self, event: PackageProgress) -> None:
-        self.stderr.print(f"[dim]{event.message}[/dim]")
+        self.stderr.print(f"[dim]{escape(event.message)}[/dim]")
 
     def success(self, message: str) -> None:
-        self.stdout.print(f"[green]{message}[/green]")
+        self.stdout.print(f"[green]{escape(message)}[/green]")
 
     def warning(self, message: str) -> None:
-        self.stderr.print(f"[yellow]{message}[/yellow]")
+        self.stderr.print(f"[yellow]{escape(message)}[/yellow]")
 
     def error(self, message: str) -> None:
-        self.stderr.print(f"[red]Error:[/red] {message}")
+        self.stderr.print(f"[red]Error:[/red] {escape(message)}")
 
     def packs(self, packs: list[dict]) -> None:
         if not packs:
@@ -41,11 +42,11 @@ class ConsolePresenter:
 
         for pack in sorted(packs, key=lambda item: str(item.get("id", ""))):
             table.add_row(
-                str(pack.get("id", "")),
-                str(pack.get("name", "")),
-                str(pack.get("version", "")),
-                str(pack.get("author") or ""),
-                str(pack.get("description") or ""),
+                escape(str(pack.get("id", ""))),
+                escape(str(pack.get("name", ""))),
+                escape(str(pack.get("version", ""))),
+                escape(str(pack.get("author") or "")),
+                escape(str(pack.get("description") or "")),
             )
         self.stdout.print(table)
 
@@ -57,12 +58,14 @@ class ConsolePresenter:
         for result in results.values():
             if result.status == "upgraded":
                 self.stdout.print(
-                    f"[green]Upgraded {result.pack_id}: "
-                    f"{result.current_version} -> {result.remote_version}[/green]"
+                    f"[green]Upgraded {escape(str(result.pack_id))}: "
+                    f"{escape(str(result.current_version))} -> "
+                    f"{escape(str(result.remote_version))}[/green]"
                 )
             elif result.status == "current":
                 self.stdout.print(
-                    f"{result.pack_id} ({result.current_version}) is up to date."
+                    f"{escape(str(result.pack_id))} "
+                    f"({escape(str(result.current_version))}) is up to date."
                 )
             elif result.status == "skipped":
                 self.warning(result.error or f"Skipped {result.pack_id}.")
