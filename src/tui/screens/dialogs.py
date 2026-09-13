@@ -146,7 +146,7 @@ class SessionSummaryDialog(ModalScreen[bool]):
                 f"Correct: {self.stats.ac_count}\n"
                 f"Accuracy: {accuracy}\n"
                 f"Mastered: {self.stats.distinct_ac} / {self.stats.total_problems}\n"
-                f"Best combo: {self.stats.combo}\n"
+                f"Current combo: {self.stats.combo}\n"
                 f"Average correct time: {self.stats.avg_time:.2f}s"
             )
             with Horizontal(classes="dialog-actions"):
