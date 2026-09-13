@@ -98,7 +98,9 @@ During a session:
 - Wait while Muninn shows `Judging...` when a plugin performs a slow
   synchronous or asynchronous answer check.
 - Press `Esc` to return to the pack library.
-- Press `Ctrl+Q` to review the session summary and quit.
+- Press `Ctrl+C` to review the session summary and quit.
+- Press `Ctrl+Q` to show a reminder that `Ctrl+C` is now the quit
+  shortcut.
 
 Run `muninn` without a subcommand to open the Textual pack library.  The
 library shows every pack's metadata and provides install, upgrade,

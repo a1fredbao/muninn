@@ -61,7 +61,8 @@ In the Textual library:
 | `Shift+U` | Upgrade all packs                           |
 | `d`       | Uninstall the selected pack                 |
 | `r`       | Refresh metadata                            |
-| `Ctrl+Q`  | Quit the application                        |
+| `Ctrl+C`  | Quit the application                        |
+| `Ctrl+P`  | Open the command palette                    |
 
 ## Write a Plugin
 

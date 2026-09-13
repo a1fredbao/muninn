@@ -21,12 +21,19 @@ class MuninnApp(App[None]):
 
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding(
-            "ctrl+q",
+            "ctrl+c",
             "request_quit",
             "Quit",
             show=True,
             priority=True,
-        )
+        ),
+        Binding(
+            "ctrl+q",
+            "show_quit_notice",
+            "Quit",
+            show=False,
+            priority=True,
+        ),
     ]
 
     def __init__(
@@ -55,3 +62,10 @@ class MuninnApp(App[None]):
                 screen.request_quit()
                 return
         self.exit()
+
+    def action_show_quit_notice(self) -> None:
+        self.notify(
+            "Press Ctrl+C to quit.",
+            title="Use Ctrl+C",
+            severity="warning",
+        )

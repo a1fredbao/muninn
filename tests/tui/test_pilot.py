@@ -93,10 +93,13 @@ def test_library_exposes_management_dialog_and_quit_binding():
         app = MuninnApp(package_manager=manager)
         async with app.run_test(size=(120, 30)) as pilot:
             await pilot.pause()
-            assert any(
-                binding.binding.key == "ctrl+q"
-                for binding in app.screen.active_bindings.values()
+            assert app.screen.active_bindings["ctrl+c"].binding.show
+            assert not app.screen.active_bindings["ctrl+q"].binding.show
+            assert (
+                app.screen.active_bindings["ctrl+q"].binding.action
+                == "show_quit_notice"
             )
+            assert "ctrl+p" in app.screen.active_bindings
             assert "n" not in app.screen.active_bindings
             await pilot.press("i")
             await pilot.pause()
@@ -114,6 +117,46 @@ def test_library_exposes_management_dialog_and_quit_binding():
                     break
             assert manager.installed == ["source-path"]
             assert isinstance(app.screen, OperationDialog)
+
+    asyncio.run(exercise())
+
+
+def test_ctrl_c_quits_library_immediately():
+    async def exercise():
+        app = MuninnApp(package_manager=_PackageManager())
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause()
+            await pilot.press("ctrl+c")
+            await pilot.pause()
+            assert not app.is_running
+
+    asyncio.run(exercise())
+
+
+def test_ctrl_p_opens_command_palette():
+    async def exercise():
+        app = MuninnApp(package_manager=_PackageManager())
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause()
+            await pilot.press("ctrl+p")
+            await pilot.pause()
+            assert type(app.screen).__name__ == "CommandPalette"
+
+    asyncio.run(exercise())
+
+
+def test_ctrl_q_shows_notice_without_quitting():
+    async def exercise():
+        app = MuninnApp(package_manager=_PackageManager())
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause()
+            await pilot.press("ctrl+q")
+            await pilot.pause()
+            assert app.is_running
+            assert any(
+                "Ctrl+C" in notification.message
+                for notification in app._notifications
+            )
 
     asyncio.run(exercise())
 
@@ -139,7 +182,7 @@ def test_slow_sync_judging_does_not_block_pilot():
             assert ticks >= 5
             assert screen.phase == "feedback"
             assert session.stats().total_count == 1
-            await pilot.press("ctrl+q")
+            await pilot.press("ctrl+c")
             await pilot.pause()
             assert isinstance(app.screen, SessionSummaryDialog)
 
