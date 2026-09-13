@@ -12,7 +12,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Container, Vertical
 from textual.screen import Screen
-from textual.widgets import Footer, Header, Input, LoadingIndicator, Static
+from textual.widgets import Footer, Header, LoadingIndicator, Static, TextArea
 
 from ...services.study_session import StudySession
 from .dialogs import JudgeErrorDialog, SessionSummaryDialog
@@ -23,7 +23,21 @@ class SessionScreen(Screen[None]):
 
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("escape", "leave", "Library", show=True),
-        Binding("enter", "next_problem", "Next", show=True),
+        Binding("enter", "submit_answer", "Submit", show=True, priority=True),
+        Binding(
+            "ctrl+enter",
+            "insert_newline",
+            "New line",
+            show=False,
+            priority=True,
+        ),
+        Binding(
+            "super+enter",
+            "insert_newline",
+            "New line",
+            show=False,
+            priority=True,
+        ),
     ]
 
     def __init__(self, session: StudySession) -> None:
@@ -42,7 +56,11 @@ class SessionScreen(Screen[None]):
             yield Static("", id="session-stats")
             with Vertical(id="question-panel"):
                 yield Static("", id="question")
-                yield Input(placeholder="Type your answer and press Enter", id="answer")
+                yield TextArea(
+                    placeholder="Enter submits; Ctrl+Enter adds a new line",
+                    id="answer",
+                    soft_wrap=True,
+                )
                 yield LoadingIndicator(id="judging")
                 yield Static("", id="feedback")
         yield Footer()
@@ -57,7 +75,7 @@ class SessionScreen(Screen[None]):
         self._pending_leave = False
 
         question = self.query_one("#question", Static)
-        answer = self.query_one("#answer", Input)
+        answer = self.query_one("#answer", TextArea)
         feedback = self.query_one("#feedback", Static)
         judging = self.query_one("#judging", LoadingIndicator)
 
@@ -83,7 +101,7 @@ class SessionScreen(Screen[None]):
         self.phase = "ready"
         self._answer_started = time.perf_counter()
         question.update(Text(statement))
-        answer.value = ""
+        answer.text = ""
         answer.disabled = False
         answer.focus()
         self._update_stats()
@@ -97,20 +115,29 @@ class SessionScreen(Screen[None]):
             f"Avg {stats.avg_time:.2f}s"
         )
 
-    def on_input_submitted(self, event: Input.Submitted) -> None:
+    def action_submit_answer(self) -> None:
+        if self.phase == "feedback":
+            self._advance()
+            return
         if self.phase != "ready" or self.problem_id is None:
             return
+        answer = self.query_one("#answer", TextArea)
+        user_input = answer.text
         elapsed = self.session.elapsed(self._answer_started)
         self.phase = "judging"
-        self.query_one("#answer", Input).disabled = True
+        answer.disabled = True
         self.query_one("#judging", LoadingIndicator).display = True
         self.query_one("#feedback", Static).update("Judging...")
         self.run_worker(
-            self._judge_answer(event.value, elapsed),
+            self._judge_answer(user_input, elapsed),
             name="judge",
             group="judge",
             exclusive=True,
         )
+
+    def action_insert_newline(self) -> None:
+        if self.phase == "ready":
+            self.query_one("#answer", TextArea).insert("\n")
 
     async def _judge_answer(self, user_input: str, elapsed: float) -> None:
         assert self.problem_id is not None
@@ -165,10 +192,6 @@ class SessionScreen(Screen[None]):
                 f"Expected: [yellow]{escape(expected)}[/yellow]"
             )
         feedback.update(message)
-
-    def action_next_problem(self) -> None:
-        if self.phase == "feedback":
-            self._advance()
 
     def action_leave(self) -> None:
         if self.phase == "judging":

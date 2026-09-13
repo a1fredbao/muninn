@@ -64,6 +64,10 @@ Textual 主页面快捷键：
 | `Ctrl+C`  | 退出应用                 |
 | `Ctrl+P`  | 打开命令面板             |
 
+答题时按 `Enter` 提交答案，按 `Ctrl+Enter` 换行。若终端会将 Command
+修饰键传递给应用，`Command+Enter` 也可以换行。答案输入框会随内容自动
+增高，达到学习页面可用高度的一半后改为内部滚动。
+
 ## 开发插件
 
 完整文档请见：[a1fredbao.github.io/muninn](https://a1fredbao.github.io/muninn/)

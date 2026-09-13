@@ -94,7 +94,11 @@ response time, favouring topics you struggle with.
 
 During a session:
 
-- Type your answer and press Enter.
+- Type your answer and press Enter to submit it.
+- Press `Ctrl+Enter` to add a new line.  `Command+Enter` works in
+  terminals that forward the Command modifier to the application.
+- The answer field grows with its contents and then scrolls internally
+  once it reaches half of the available session height.
 - Wait while Muninn shows `Judging...` when a plugin performs a slow
   synchronous or asynchronous answer check.
 - Press `Esc` to return to the pack library.

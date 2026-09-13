@@ -69,7 +69,12 @@ ModalScreen {
 }
 
 #answer {
+    width: 100%;
+    height: auto;
+    min-height: 3;
+    max-height: 50%;
     margin-top: 1;
+    border: solid $secondary;
 }
 
 #judging {

@@ -64,6 +64,12 @@ In the Textual library:
 | `Ctrl+C`  | Quit the application                        |
 | `Ctrl+P`  | Open the command palette                    |
 
+While answering, `Enter` submits the answer and `Ctrl+Enter` inserts a
+newline. `Command+Enter` also inserts a newline in terminals that forward
+the Command modifier to the application. The answer field grows with its
+contents, then scrolls internally when it reaches half of the available
+session height.
+
 ## Write a Plugin
 
 See full documentation at: [a1fredbao.github.io/muninn](https://a1fredbao.github.io/muninn/)
