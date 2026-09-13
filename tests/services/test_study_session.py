@@ -93,3 +93,24 @@ def test_session_accumulates_stats_after_judging():
     assert stats.combo == 1
     assert stats.avg_time == 1.5
     session.close()
+
+
+def test_skip_problem_removes_it_once_and_updates_total():
+    plugin = _Plugin(lambda problem_id, user_input: True)
+    plugin.ids = ["1", "2"]
+    state = _state_manager()
+    session = StudySession("skip", plugin, state)
+    problem_id = session.next_problem()
+    assert problem_id is not None
+
+    session.skip_problem(problem_id)
+    session.skip_problem(problem_id)
+
+    remaining = set()
+    while (next_problem := session.next_problem()) is not None:
+        remaining.add(next_problem)
+
+    assert problem_id not in remaining
+    assert session.stats().total_problems == 1
+    state.update_stats.assert_not_called()
+    session.close()

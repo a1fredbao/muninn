@@ -39,9 +39,11 @@ class StudySession:
     ) -> None:
         self.pack_id = pack_id
         self.plugin = plugin
-        self.problem_ids = self.plugin.get_all_problem_ids()
         self.state_manager = state_manager or StateManager(pack_id)
-        self.scheduler = Scheduler(self.problem_ids, self.state_manager)
+        self.scheduler = Scheduler(
+            self.plugin.get_all_problem_ids(),
+            self.state_manager,
+        )
         self.combo = 0
         self._closed = False
 
@@ -52,7 +54,7 @@ class StudySession:
         self._load_stats()
 
     def _load_stats(self) -> None:
-        for problem_id in self.problem_ids:
+        for problem_id in self.scheduler.active_problem_ids:
             stats = self.state_manager.get_stats(problem_id)
             if stats["ac_count"] > 0:
                 self.distinct_ac += 1
@@ -118,12 +120,7 @@ class StudySession:
     def skip_problem(self, problem_id: str) -> None:
         """Remove a problem from the rest of this in-memory session."""
 
-        if problem_id in self.problem_ids:
-            self.problem_ids.remove(problem_id)
-            self.scheduler.problem_ids.remove(problem_id)
-            self.scheduler.q_queue = [
-                item for item in self.scheduler.q_queue if item[1] != problem_id
-            ]
+        self.scheduler.remove_problem(problem_id)
 
     def stats(self) -> StudyStats:
         avg_time = (
@@ -131,7 +128,7 @@ class StudySession:
         )
         return StudyStats(
             distinct_ac=self.distinct_ac,
-            total_problems=len(self.problem_ids),
+            total_problems=len(self.scheduler.active_problem_ids),
             ac_count=self.total_ac_count,
             total_count=self.total_count,
             combo=self.combo,
