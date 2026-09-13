@@ -45,7 +45,7 @@ class SessionScreen(Screen[None]):
                 yield Input(placeholder="Type your answer and press Enter", id="answer")
                 yield LoadingIndicator(id="judging")
                 yield Static("", id="feedback")
-        yield Footer(show_command_palette=False)
+        yield Footer()
 
     def on_mount(self) -> None:
         self.query_one("#judging", LoadingIndicator).display = False

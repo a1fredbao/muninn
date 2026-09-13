@@ -22,7 +22,6 @@ from ...services.study_session import StudySession
 from .dialogs import (
     ConfirmDialog,
     InstallDialog,
-    NewPackDialog,
     OperationDialog,
 )
 from .session import SessionScreen
@@ -35,10 +34,9 @@ class LibraryScreen(Screen[None]):
         Binding("enter", "study", "Study", show=True, priority=True),
         Binding("i", "install", "Install", show=True),
         Binding("u", "upgrade_selected", "Upgrade", show=True),
-        Binding("U", "upgrade_all", "Upgrade all", show=False),
+        Binding("U", "upgrade_all", "Upgrade all", show=True),
         Binding("d", "uninstall", "Uninstall", show=True),
-        Binding("n", "new_pack", "New", show=True),
-        Binding("r", "refresh", "Refresh", show=False),
+        Binding("r", "refresh", "Refresh", show=True),
     ]
 
     def __init__(self, package_manager: PackageManager) -> None:
@@ -56,7 +54,7 @@ class LibraryScreen(Screen[None]):
                 yield Static("", id="pack-metadata")
                 yield Static("", id="pack-description")
                 yield LoadingIndicator(id="session-loading")
-        yield Footer(show_command_palette=False)
+        yield Footer()
 
     def on_mount(self) -> None:
         table = self.query_one("#pack-table", DataTable)
@@ -253,31 +251,6 @@ class LibraryScreen(Screen[None]):
             return True, f"Uninstalled pack '{pack_id}'."
 
         self._run_package_operation(f"Uninstall {pack_id}", operation)
-
-    def action_new_pack(self) -> None:
-        self.run_worker(
-            self._new_pack(),
-            name="new-pack-dialog",
-            group="ui",
-            exclusive=True,
-        )
-
-    async def _new_pack(self) -> None:
-        values = await self.app.push_screen_wait(NewPackDialog())
-        if not values:
-            return
-        pack_id, target_dir = values
-
-        def operation(progress, cancel_token):
-            path = self.package_manager.create_template(
-                pack_id,
-                target_dir,
-                progress,
-                cancel_token,
-            )
-            return True, f"Template created at {path}."
-
-        self._run_package_operation("Create template", operation)
 
     def action_refresh(self) -> None:
         self.refresh_packs()

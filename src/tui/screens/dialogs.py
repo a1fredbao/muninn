@@ -80,43 +80,6 @@ class InstallDialog(ModalScreen[str | None]):
         self.dismiss(None)
 
 
-class NewPackDialog(ModalScreen[tuple[str, str] | None]):
-    """Collect the pack ID and target directory."""
-
-    BINDINGS: ClassVar[list[BindingType]] = [("escape", "cancel", "Cancel")]
-
-    def compose(self) -> ComposeResult:
-        with Container(classes="dialog"):
-            yield Label("Create plugin template", classes="dialog-title")
-            yield Input(placeholder="Pack ID", id="new-pack-id")
-            yield Input(value=".", placeholder="Target directory", id="new-pack-dir")
-            with Horizontal(classes="dialog-actions"):
-                yield Button("Cancel", id="cancel")
-                yield Button("Create", id="submit", variant="primary")
-
-    def on_mount(self) -> None:
-        self.query_one("#new-pack-id", Input).focus()
-
-    def on_input_submitted(self, event: Input.Submitted) -> None:
-        if event.input.id == "new-pack-dir":
-            self._submit()
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "submit":
-            self._submit()
-        else:
-            self.dismiss(None)
-
-    def _submit(self) -> None:
-        pack_id = self.query_one("#new-pack-id", Input).value.strip()
-        target_dir = self.query_one("#new-pack-dir", Input).value.strip() or "."
-        if pack_id:
-            self.dismiss((pack_id, target_dir))
-
-    def action_cancel(self) -> None:
-        self.dismiss(None)
-
-
 class OperationDialog(ModalScreen[None]):
     """Display progress for one background package operation."""
 

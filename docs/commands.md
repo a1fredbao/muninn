@@ -102,8 +102,8 @@ During a session:
 
 Run `muninn` without a subcommand to open the Textual pack library.  The
 library shows every pack's metadata and provides install, upgrade,
-uninstall, template creation, and refresh actions.  The install, upgrade,
-uninstall, list, and new subcommands continue to use the traditional CLI.
+uninstall, and refresh actions.  The install, upgrade, uninstall, list,
+and new subcommands continue to use the traditional CLI.
 Long-running management operations run in the background and provide a
 progress dialog with best-effort cancellation.
 

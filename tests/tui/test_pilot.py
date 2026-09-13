@@ -97,6 +97,7 @@ def test_library_exposes_management_dialog_and_quit_binding():
                 binding.binding.key == "ctrl+q"
                 for binding in app.screen.active_bindings.values()
             )
+            assert "n" not in app.screen.active_bindings
             await pilot.press("i")
             await pilot.pause()
             assert isinstance(app.screen, InstallDialog)

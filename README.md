@@ -60,7 +60,6 @@ In the Textual library:
 | `u`       | Upgrade the selected pack                   |
 | `Shift+U` | Upgrade all packs                           |
 | `d`       | Uninstall the selected pack                 |
-| `n`       | Create a plugin template                    |
 | `r`       | Refresh metadata                            |
 | `Ctrl+Q`  | Quit the application                        |
 
