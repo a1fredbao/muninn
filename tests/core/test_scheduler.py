@@ -8,6 +8,8 @@ class TestScheduler:
         ids = ["a", "b", "c", "d", "e"]
         s = Scheduler(ids, mock_state_manager)
         assert len(s.q_queue) == 5
+        assert s.active_problem_ids == ids
+        assert s.active_problem_ids is not ids
 
     def test_next_problem_returns_valid_id(self, mock_state_manager):
         ids = ["a", "b", "c"]
@@ -58,3 +60,29 @@ class TestScheduler:
     def test_empty_ids(self, mock_state_manager):
         s = Scheduler([], mock_state_manager)
         assert s.next_problem() is None
+
+    def test_remove_queued_problem(self, mock_state_manager):
+        s = Scheduler(["a", "b", "c"], mock_state_manager)
+
+        assert s.remove_problem("b")
+        assert s.active_problem_ids == ["a", "c"]
+        assert all(item[1] != "b" for item in s.q_queue)
+        assert not s.remove_problem("b")
+
+        remaining = set()
+        while (problem_id := s.next_problem()) is not None:
+            remaining.add(problem_id)
+        assert remaining == {"a", "c"}
+
+    def test_removed_problem_is_not_requeued(self, mock_state_manager):
+        s = Scheduler(["a", "b"], mock_state_manager)
+        problem_id = s.next_problem()
+        assert problem_id is not None
+
+        assert s.remove_problem(problem_id)
+        s.update_problem(problem_id, is_ac=True, time_spent=1.0)
+
+        remaining = set()
+        while (next_problem := s.next_problem()) is not None:
+            remaining.add(next_problem)
+        assert problem_id not in remaining

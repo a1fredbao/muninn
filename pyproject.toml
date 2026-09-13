@@ -18,7 +18,10 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Topic :: Education",
 ]
-dependencies = []
+dependencies = [
+    "rich>=13.0.0",
+    "textual>=8.2.8",
+]
 
 [project.scripts]
 muninn = "src.main:main"

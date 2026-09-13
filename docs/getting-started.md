@@ -22,7 +22,10 @@ muninn install https://github.com/user/repo
 # List installed packs
 muninn list
 
-# Run a pack
+# Open the Textual pack library
+muninn
+
+# Run a pack directly
 muninn run <pack_id>
 
 # Uninstall a pack

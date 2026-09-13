@@ -35,12 +35,26 @@ class Plugin(BaseRecitePlugin):
         return ""
 ```
 
+`check_answer()` may also be asynchronous.  Muninn awaits async plugin
+methods directly and runs synchronous methods in a background worker so
+the Textual interface remains responsive:
+
+``` python
+async def check_answer(
+    self,
+    problem_id: str,
+    user_input: str,
+) -> bool:
+    result = await call_remote_judge(problem_id, user_input)
+    return result.accepted
+```
+
 ## Lifecycle
 
 1. Muninn calls `__init__(workspace_dir)`, which calls `load_data()`.
 2. Muninn calls `get_all_problem_ids()` to build the scheduler queue.
-3. For each problem, Muninn calls `render_statement()` → captures user
-   input → calls `check_answer()`.
+3. For each problem, Muninn calls `render_statement()` -> captures user
+   input -> calls `check_answer()`.
 4. On correct answer: `get_expand_info()` is shown.
 5. On wrong answer: `get_expected_display()` is shown.
 

@@ -7,7 +7,7 @@ import sys
 
 import pytest
 
-from src.cli.manager import PackageManager
+from src.services.package_manager import PackageManager
 
 # -----------------------------------------------------------------------
 # Helpers
@@ -120,7 +120,11 @@ class TestInstallPackDependencies:
         fake_python = str(venvs_base / "p1" / "bin" / os.path.basename(sys.executable))
         m = PackageManager()
         monkeypatch.setattr(m, "_get_pack_venv_dir", lambda pid: str(venvs_base / pid))
-        monkeypatch.setattr(m, "_ensure_pack_venv", lambda pid: fake_python)
+        monkeypatch.setattr(
+            m,
+            "_ensure_pack_venv",
+            lambda pid, cancel_token=None: fake_python,
+        )
 
         calls = []
         real_run = subprocess.run
@@ -158,7 +162,7 @@ class TestConflictingVersions:
         monkeypatch.setattr(
             m,
             "_ensure_pack_venv",
-            lambda pid: str(
+            lambda pid, cancel_token=None: str(
                 venvs_base / pid / "bin" / os.path.basename(sys.executable)
             ),
         )
@@ -239,7 +243,7 @@ class TestFailedDependencyPreservesPack:
         monkeypatch.setattr(
             m,
             "_ensure_pack_venv",
-            lambda pid: str(
+            lambda pid, cancel_token=None: str(
                 venvs_base / pid / "bin" / os.path.basename(sys.executable)
             ),
         )

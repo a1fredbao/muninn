@@ -9,7 +9,8 @@ Muninn provides:
 - **Smart scheduling** that targets your weak points based on accuracy and
   response time.
 - **Persistent state** so progress survives across sessions.
-- **A clean terminal UI** with zero distractions.
+- **A Textual pack library and reciting UI** with keyboard-driven
+  management and progress feedback.
 
 ---
 
