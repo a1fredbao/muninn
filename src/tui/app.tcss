@@ -1,0 +1,140 @@
+Screen {
+    background: $surface;
+}
+
+ModalScreen {
+    align: center middle;
+}
+
+#library-body {
+    height: 1fr;
+}
+
+#pack-table {
+    width: 1fr;
+    height: 1fr;
+    border: solid $primary;
+}
+
+#pack-details {
+    width: 38;
+    min-width: 28;
+    height: 1fr;
+    padding: 1 2;
+    border: solid $secondary;
+}
+
+#pack-name {
+    height: auto;
+    text-style: bold;
+    color: $accent;
+    margin-bottom: 1;
+}
+
+#pack-metadata {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#pack-description {
+    height: 1fr;
+    color: $text-muted;
+}
+
+#session-loading {
+    height: 1;
+}
+
+#session-shell {
+    height: 1fr;
+    padding: 1 3;
+}
+
+#session-stats {
+    height: 3;
+    content-align: left middle;
+    color: $text-muted;
+}
+
+#question-panel {
+    height: 1fr;
+    border: solid $primary;
+    padding: 2 3;
+}
+
+#question {
+    height: auto;
+    min-height: 3;
+    margin-bottom: 1;
+}
+
+#answer {
+    width: 100%;
+    height: auto;
+    min-height: 3;
+    max-height: 50%;
+    margin-top: 1;
+    border: solid $secondary;
+}
+
+#judging {
+    height: 1;
+    margin-top: 1;
+}
+
+#feedback {
+    height: auto;
+    min-height: 3;
+    margin-top: 1;
+}
+
+.dialog {
+    width: 64;
+    max-width: 90%;
+    height: auto;
+    padding: 1 2;
+    border: thick $primary;
+    background: $surface;
+}
+
+.operation-dialog {
+    width: 84;
+    height: 80%;
+}
+
+.dialog-title {
+    width: 100%;
+    text-align: center;
+    text-style: bold;
+    color: $accent;
+    margin-bottom: 1;
+}
+
+.dialog-help {
+    color: $text-muted;
+    margin: 1 0;
+}
+
+.dialog-actions {
+    height: auto;
+    align-horizontal: right;
+    margin-top: 1;
+}
+
+.dialog-actions Button {
+    margin-left: 1;
+}
+
+#operation-log {
+    height: 1fr;
+    border: solid $secondary;
+    margin: 1 0;
+}
+
+.error-text {
+    color: $error;
+}
+
+.success-text {
+    color: $success;
+}

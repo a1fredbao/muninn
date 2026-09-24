@@ -32,19 +32,43 @@ pip install muninn-cli
 # Install a pack from GitHub
 muninn install a1fredbao/muninn-chemistry-plugin
 
-# Start reciting
+# Open the Textual library
+muninn
+
+# Or start a specific pack directly
 muninn run muninn-chemistry-plugin
 ```
 
 ## Commands
 
-| Command                      |                                                              |
-| ---------------------------- | ------------------------------------------------------------ |
-| `muninn install <source>`    | Install a pack (local dir, zip, GitHub URL, or `user/repo`). |
-| `muninn uninstall <pack_id>` | Remove a pack.                                               |
-| `muninn list`                | List installed packs.                                        |
-| `muninn run <pack_id>`       | Start a reciting session.                                    |
-| `muninn new <name>`          | Generate a plugin template.                                  |
+| Command                      |                                                               |
+| ---------------------------- | ------------------------------------------------------------- |
+| `muninn`                     | Open the Textual pack library and management UI.              |
+| `muninn install <source>`    | Install a pack (local dir, zip, GitHub URL, or `user/repo`).  |
+| `muninn uninstall <pack_id>` | Remove a pack.                                                |
+| `muninn upgrade [pack_id]`   | Upgrade one or all packs.                                     |
+| `muninn list`                | List installed packs in the traditional CLI.                  |
+| `muninn run <pack_id>`       | Open a Textual reciting session for one pack.                 |
+| `muninn new <name>`          | Generate a plugin template.                                   |
+
+In the Textual library:
+
+| Key       | Action                                      |
+| --------- | ------------------------------------------- |
+| `Enter`   | Start the selected pack                     |
+| `i`       | Install a pack                              |
+| `u`       | Upgrade the selected pack                   |
+| `Shift+U` | Upgrade all packs                           |
+| `d`       | Uninstall the selected pack                 |
+| `r`       | Refresh metadata                            |
+| `Ctrl+C`  | Quit the application                        |
+| `Ctrl+P`  | Open the command palette                    |
+
+While answering, `Enter` submits the answer and `Ctrl+Enter` inserts a
+newline. `Command+Enter` also inserts a newline in terminals that forward
+the Command modifier to the application. The answer field grows with its
+contents, then scrolls internally when it reaches half of the available
+session height.
 
 ## Write a Plugin
 
