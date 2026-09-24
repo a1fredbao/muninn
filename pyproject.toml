@@ -1,6 +1,6 @@
 [project]
 name = "muninn-cli"
-version = "0.3.1"
+version = "1.0.0"
 description = "Muninn - The Extensible Reciting CLI"
 readme = "README.md"
 requires-python = ">=3.12"
