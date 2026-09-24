@@ -844,8 +844,7 @@ class Plugin(DataPlugin):
     def _has_pack_dependencies(pack_dir: str) -> bool:
         requirements_path = os.path.join(pack_dir, "requirements.txt")
         return (
-            os.path.isfile(requirements_path)
-            and os.path.getsize(requirements_path) > 0
+            os.path.isfile(requirements_path) and os.path.getsize(requirements_path) > 0
         )
 
     def _commit_install(
@@ -946,9 +945,7 @@ class Plugin(DataPlugin):
                 )
 
             try:
-                stdout, stderr = process.communicate(
-                    timeout=min(0.05, remaining)
-                )
+                stdout, stderr = process.communicate(timeout=min(0.05, remaining))
                 break
             except subprocess.TimeoutExpired:
                 if not cancel_token.cancelled:
