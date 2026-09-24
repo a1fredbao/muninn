@@ -1,9 +1,11 @@
 """Tests for output-free package-management services."""
 
+import io
 import json
 import os
 import sys
 import threading
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -66,7 +68,7 @@ def test_upgrade_all_results_contains_per_pack_status(monkeypatch, tmp_path):
     monkeypatch.setattr(
         manager,
         "list_packs",
-        lambda: [{"id": "a"}, {"id": "b"}],
+        lambda progress=None: [{"id": "a"}, {"id": "b"}],
     )
     monkeypatch.setattr(
         manager,
@@ -114,3 +116,33 @@ def test_subprocess_cancellation_terminates_running_process():
             )
     finally:
         timer.cancel()
+
+
+def test_subprocess_drains_large_output_without_deadlock():
+    manager = PackageManager()
+    result = manager._run_subprocess(
+        [
+            sys.executable,
+            "-c",
+            "import sys; print('o' * 200000); print('e' * 200000, file=sys.stderr)",
+        ],
+        timeout=10,
+        cancel_token=CancellationToken(),
+    )
+
+    assert len(result.stdout) == 200001
+    assert len(result.stderr) == 200001
+
+
+def test_remote_manifest_fetch_observes_cancellation(monkeypatch):
+    manager = PackageManager()
+    token = CancellationToken()
+
+    def fake_urlopen(url, timeout):
+        token.cancel()
+        return io.BytesIO(b'{"version": "1.0.0"}')
+
+    monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(OperationCancelled):
+        manager._fetch_remote_manifest("github:user/repo", token)

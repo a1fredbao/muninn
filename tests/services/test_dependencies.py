@@ -4,6 +4,7 @@ import json
 import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -161,9 +162,9 @@ class TestConflictingVersions:
         monkeypatch.setattr(m, "_get_pack_venv_dir", lambda pid: str(venvs_base / pid))
         monkeypatch.setattr(
             m,
-            "_ensure_pack_venv",
-            lambda pid, cancel_token=None: str(
-                venvs_base / pid / "bin" / os.path.basename(sys.executable)
+            "_ensure_venv",
+            lambda venv_dir, cancel_token=None: str(
+                Path(venv_dir) / "bin" / os.path.basename(sys.executable)
             ),
         )
 
@@ -202,7 +203,7 @@ class TestConflictingVersions:
         m = PackageManager()
         monkeypatch.setattr(m, "packs_dir", str(packs_dir))
         monkeypatch.setattr(m, "_get_pack_venv_dir", lambda pid: str(venvs_base / pid))
-        monkeypatch.setattr(m, "_install_pack_dependencies", lambda *a: None)
+        monkeypatch.setattr(m, "_install_pack_dependencies", lambda *a, **k: None)
 
         m.install_pack(str(src_a))
         m.install_pack(str(src_b))
@@ -242,9 +243,9 @@ class TestFailedDependencyPreservesPack:
         monkeypatch.setattr(m, "_get_pack_venv_dir", lambda pid: str(venvs_base / pid))
         monkeypatch.setattr(
             m,
-            "_ensure_pack_venv",
-            lambda pid, cancel_token=None: str(
-                venvs_base / pid / "bin" / os.path.basename(sys.executable)
+            "_ensure_venv",
+            lambda venv_dir, cancel_token=None: str(
+                Path(venv_dir) / "bin" / os.path.basename(sys.executable)
             ),
         )
         m.install_pack(str(src_old))
@@ -252,6 +253,10 @@ class TestFailedDependencyPreservesPack:
             (packs_dir / "survivor" / "manifest.json").read_text()
         )
         assert old_manifest["version"] == "1.0.0"
+        old_venv = venvs_base / "survivor"
+        old_venv.mkdir(parents=True)
+        marker = old_venv / "marker"
+        marker.write_text("old dependencies")
 
         src_bad = tmp_path / "src_bad"
         _make_pack_with_deps(src_bad, "survivor", "2.0.0", "nonexistent_pkg==999\n")
@@ -272,3 +277,4 @@ class TestFailedDependencyPreservesPack:
 
         surviving = json.loads((packs_dir / "survivor" / "manifest.json").read_text())
         assert surviving["version"] == "1.0.0"
+        assert marker.read_text() == "old dependencies"

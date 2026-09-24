@@ -223,7 +223,7 @@ class PackageManager:
                 error=message,
             )
 
-        remote_manifest = self._fetch_remote_manifest(source)
+        remote_manifest = self._fetch_remote_manifest(source, cancel_token)
 
         if remote_manifest is None:
             message = (
@@ -284,7 +284,7 @@ class PackageManager:
         """Upgrade every pack and return a detailed result for each one."""
 
         results: dict[str, UpgradeResult] = {}
-        for pack in self.list_packs():
+        for pack in self.list_packs(progress=progress):
             pack_id = pack.get("id", "unknown")
             try:
                 results[pack_id] = self.upgrade_pack_result(
@@ -374,17 +374,50 @@ class PackageManager:
         if not os.path.isfile(os.path.join(pack_dir, "plugin.py")):
             raise FileNotFoundError(f"plugin.py not found in '{pack_id}'.")
 
-    def list_packs(self):
-        packs = []
+    def list_packs(
+        self,
+        progress: ProgressCallback | None = None,
+    ) -> list[dict]:
+        """Return valid installed pack manifests and report invalid entries."""
+
+        packs: list[dict] = []
         for pack_id in os.listdir(self.packs_dir):
             pack_dir = self._get_pack_dir(pack_id)
             if not os.path.isdir(pack_dir):
                 continue
             manifest_path = os.path.join(pack_dir, "manifest.json")
-            if os.path.exists(manifest_path):
+            if not os.path.exists(manifest_path):
+                continue
+
+            try:
                 with open(manifest_path, encoding="utf-8") as f:
                     manifest = json.load(f)
-                    packs.append(manifest)
+            except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+                _emit(
+                    progress,
+                    f"Skipping invalid manifest for '{pack_id}': {exc}",
+                )
+                continue
+
+            if not isinstance(manifest, dict):
+                _emit(
+                    progress,
+                    f"Skipping invalid manifest for '{pack_id}': "
+                    "root value must be an object.",
+                )
+                continue
+
+            manifest_id = manifest.get("id")
+            try:
+                self._validate_pack_id(manifest_id)
+            except (TypeError, ValueError) as exc:
+                _emit(
+                    progress,
+                    f"Skipping invalid manifest for '{pack_id}': {exc}",
+                )
+                continue
+
+            packs.append(manifest)
         return packs
 
     def create_template(
@@ -663,24 +696,34 @@ class Plugin(DataPlugin):
             with open(manifest_path, "w", encoding="utf-8") as f:
                 json.dump(manifest, f, indent=4, ensure_ascii=False)
 
-        # Install dependencies *before* replacing the existing pack so
-        # that a failed pip install does not leave the pack in a broken
-        # state or destroy the previous version.
-        self._install_pack_dependencies(
-            temp_dir,
-            pack_id,
-            progress,
-            cancel_token,
-        )
-        self._raise_if_cancelled(cancel_token)
+        staged_venv_dir = None
+        try:
+            if self._has_pack_dependencies(temp_dir):
+                venv_parent = os.path.dirname(self._get_pack_venv_dir(pack_id))
+                os.makedirs(venv_parent, exist_ok=True)
+                staged_venv_dir = tempfile.mkdtemp(
+                    dir=venv_parent,
+                    prefix=f".staging_{pack_id}_",
+                )
 
-        target_dir = self._get_pack_dir(pack_id)
-        if os.path.exists(target_dir):
-            _emit(progress, f"Updating existing pack '{pack_id}'.")
-            shutil.rmtree(target_dir)
-
-        # Ensure temp_dir parent is writable for shutil.move
-        shutil.move(temp_dir, target_dir)
+            installed_venv_dir = self._install_pack_dependencies(
+                temp_dir,
+                pack_id,
+                progress,
+                cancel_token,
+                venv_dir=staged_venv_dir,
+            )
+            self._raise_if_cancelled(cancel_token)
+            self._commit_install(
+                temp_dir,
+                pack_id,
+                installed_venv_dir,
+                progress,
+            )
+        except Exception:
+            if staged_venv_dir and os.path.exists(staged_venv_dir):
+                shutil.rmtree(staged_venv_dir, ignore_errors=True)
+            raise
 
         return pack_id
 
@@ -702,7 +745,18 @@ class Plugin(DataPlugin):
     ) -> str:
         """Return the path to the Python interpreter inside *pack_id*'s
         isolated venv, creating the venv if it doesn't already exist."""
-        venv_dir = self._get_pack_venv_dir(pack_id)
+        return self._ensure_venv(
+            self._get_pack_venv_dir(pack_id),
+            cancel_token,
+        )
+
+    def _ensure_venv(
+        self,
+        venv_dir: str,
+        cancel_token: CancellationToken | None = None,
+    ) -> str:
+        """Create *venv_dir* if needed and return its Python executable."""
+
         exe_name = os.path.basename(sys.executable)
         python_exe = os.path.join(
             venv_dir,
@@ -747,19 +801,26 @@ class Plugin(DataPlugin):
         pack_id: str,
         progress: ProgressCallback | None = None,
         cancel_token: CancellationToken | None = None,
-    ) -> None:
+        *,
+        venv_dir: str | None = None,
+    ) -> str | None:
         """If *pack_dir* contains a ``requirements.txt``, install its
         contents into the pack's isolated venv."""
         req_path = os.path.join(pack_dir, "requirements.txt")
         if not os.path.isfile(req_path):
-            return
+            return None
 
         # Skip empty requirements files --- venv creation would be wasteful.
         if os.path.getsize(req_path) == 0:
-            return
+            return None
 
         self._raise_if_cancelled(cancel_token)
-        venv_python = self._ensure_pack_venv(pack_id, cancel_token)
+        if venv_dir is None:
+            target_venv_dir = self._get_pack_venv_dir(pack_id)
+            venv_python = self._ensure_pack_venv(pack_id, cancel_token)
+        else:
+            target_venv_dir = venv_dir
+            venv_python = self._ensure_venv(venv_dir, cancel_token)
         pip = os.path.join(os.path.dirname(venv_python), "pip")
 
         _emit(progress, f"Installing dependencies for '{pack_id}'.")
@@ -777,6 +838,66 @@ class Plugin(DataPlugin):
             raise RuntimeError(
                 f"Failed to install dependencies for '{pack_id}': {exc.stderr.strip()}"
             ) from exc
+        return target_venv_dir
+
+    @staticmethod
+    def _has_pack_dependencies(pack_dir: str) -> bool:
+        requirements_path = os.path.join(pack_dir, "requirements.txt")
+        return (
+            os.path.isfile(requirements_path)
+            and os.path.getsize(requirements_path) > 0
+        )
+
+    def _commit_install(
+        self,
+        staged_pack_dir: str,
+        pack_id: str,
+        staged_venv_dir: str | None,
+        progress: ProgressCallback | None = None,
+    ) -> None:
+        """Replace a pack and its venv, rolling both back on failure."""
+
+        target_pack_dir = self._get_pack_dir(pack_id)
+        target_venv_dir = self._get_pack_venv_dir(pack_id)
+        suffix = f"{os.getpid()}-{time.time_ns()}"
+        backup_pack_dir = f"{target_pack_dir}.backup-{suffix}"
+        backup_venv_dir = f"{target_venv_dir}.backup-{suffix}"
+        pack_backed_up = False
+        venv_backed_up = False
+        pack_committed = False
+        venv_committed = False
+
+        try:
+            if os.path.exists(target_pack_dir):
+                _emit(progress, f"Updating existing pack '{pack_id}'.")
+                shutil.move(target_pack_dir, backup_pack_dir)
+                pack_backed_up = True
+
+            if staged_venv_dir is not None and os.path.exists(target_venv_dir):
+                shutil.move(target_venv_dir, backup_venv_dir)
+                venv_backed_up = True
+
+            shutil.move(staged_pack_dir, target_pack_dir)
+            pack_committed = True
+
+            if staged_venv_dir is not None:
+                shutil.move(staged_venv_dir, target_venv_dir)
+                venv_committed = True
+        except Exception:
+            if pack_committed and os.path.exists(target_pack_dir):
+                shutil.rmtree(target_pack_dir, ignore_errors=True)
+            if venv_committed and os.path.exists(target_venv_dir):
+                shutil.rmtree(target_venv_dir, ignore_errors=True)
+            if pack_backed_up and os.path.exists(backup_pack_dir):
+                shutil.move(backup_pack_dir, target_pack_dir)
+            if venv_backed_up and os.path.exists(backup_venv_dir):
+                shutil.move(backup_venv_dir, target_venv_dir)
+            raise
+        else:
+            if pack_backed_up:
+                shutil.rmtree(backup_pack_dir, ignore_errors=True)
+            if venv_backed_up:
+                shutil.rmtree(backup_venv_dir, ignore_errors=True)
 
     @staticmethod
     def _raise_if_cancelled(cancel_token: CancellationToken | None) -> None:
@@ -812,16 +933,9 @@ class Plugin(DataPlugin):
             text=True,
         )
         deadline = time.monotonic() + timeout
-        while process.poll() is None:
-            if cancel_token.cancelled:
-                process.terminate()
-                try:
-                    process.wait(timeout=5)
-                except subprocess.TimeoutExpired:
-                    process.kill()
-                    process.wait()
-                raise OperationCancelled("Operation cancelled.")
-            if time.monotonic() >= deadline:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
                 process.kill()
                 stdout, stderr = process.communicate()
                 raise subprocess.TimeoutExpired(
@@ -830,9 +944,24 @@ class Plugin(DataPlugin):
                     output=stdout,
                     stderr=stderr,
                 )
-            time.sleep(0.05)
 
-        stdout, stderr = process.communicate()
+            try:
+                stdout, stderr = process.communicate(
+                    timeout=min(0.05, remaining)
+                )
+                break
+            except subprocess.TimeoutExpired:
+                if not cancel_token.cancelled:
+                    continue
+
+                process.terminate()
+                try:
+                    process.communicate(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.communicate()
+                raise OperationCancelled("Operation cancelled.")
+
         completed = subprocess.CompletedProcess(
             args,
             process.returncode,
@@ -861,20 +990,30 @@ class Plugin(DataPlugin):
         with open(manifest_path, encoding="utf-8") as f:
             return json.load(f)
 
-    def _fetch_remote_manifest(self, source: str) -> dict | None:
+    def _fetch_remote_manifest(
+        self,
+        source: str,
+        cancel_token: CancellationToken | None = None,
+    ) -> dict | None:
         """Fetch the remote manifest.json for *source*.
 
         Returns ``None`` when the source is unavailable (missing local
         path, network error, 404, etc.).
         """
+        self._raise_if_cancelled(cancel_token)
         if source.startswith("github:"):
-            return self._fetch_github_manifest(source)
+            return self._fetch_github_manifest(source, cancel_token)
         if source.startswith("local:"):
-            return self._read_local_source_manifest(source)
+            return self._read_local_source_manifest(source, cancel_token)
         return None
 
-    def _fetch_github_manifest(self, source: str) -> dict | None:
+    def _fetch_github_manifest(
+        self,
+        source: str,
+        cancel_token: CancellationToken | None = None,
+    ) -> dict | None:
         """Fetch ``manifest.json`` from a ``github:owner/repo[@ref]`` source."""
+        self._raise_if_cancelled(cancel_token)
         key = source.removeprefix("github:")
         if "@" in key:
             owner_repo, ref = key.rsplit("@", 1)
@@ -883,26 +1022,35 @@ class Plugin(DataPlugin):
 
         candidates = [ref] if ref != "main" else ["main", "master"]
         for branch in candidates:
+            self._raise_if_cancelled(cancel_token)
             url = (
                 f"https://raw.githubusercontent.com/{owner_repo}/{branch}/manifest.json"
             )
             try:
                 with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT) as resp:
-                    return json.loads(resp.read().decode("utf-8"))
+                    manifest = json.loads(resp.read().decode("utf-8"))
+                    self._raise_if_cancelled(cancel_token)
+                    return manifest
             except (OSError, json.JSONDecodeError):
                 continue
 
         return None
 
     @staticmethod
-    def _read_local_source_manifest(source: str) -> dict | None:
+    def _read_local_source_manifest(
+        source: str,
+        cancel_token: CancellationToken | None = None,
+    ) -> dict | None:
         """Read ``manifest.json`` from a ``local:/path`` source."""
+        PackageManager._raise_if_cancelled(cancel_token)
         path = source.removeprefix("local:")
         manifest_path = os.path.join(path, "manifest.json")
         if not os.path.exists(manifest_path):
             return None
         with open(manifest_path, encoding="utf-8") as f:
-            return json.load(f)
+            manifest = json.load(f)
+        PackageManager._raise_if_cancelled(cancel_token)
+        return manifest
 
     @staticmethod
     def _version_tuple(version_str: str) -> tuple[int, ...]:

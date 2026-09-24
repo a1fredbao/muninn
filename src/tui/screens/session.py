@@ -164,7 +164,9 @@ class SessionScreen(Screen[None]):
                     self._advance()
                     self._resolve_pending_navigation()
                     return
-                await self._open_summary()
+                should_end = await self._open_summary()
+                if not should_end:
+                    self._restore_current_problem()
                 return
 
         self.phase = "feedback"
@@ -192,6 +194,18 @@ class SessionScreen(Screen[None]):
                 f"Expected: [yellow]{escape(expected)}[/yellow]"
             )
         feedback.update(message)
+
+    def _restore_current_problem(self) -> None:
+        """Make the current problem answerable again after a recoverable error."""
+
+        self.phase = "ready"
+        self._answer_started = time.perf_counter()
+        self.query_one("#judging", LoadingIndicator).display = False
+        self.query_one("#feedback", Static).update("")
+        answer = self.query_one("#answer", TextArea)
+        answer.disabled = False
+        answer.focus()
+        self._update_stats()
 
     def action_leave(self) -> None:
         if self.phase == "judging":
@@ -240,9 +254,9 @@ class SessionScreen(Screen[None]):
                 exclusive=True,
             )
 
-    async def _open_summary(self) -> None:
+    async def _open_summary(self) -> bool:
         if self._summary_open:
-            return
+            return False
         self._summary_open = True
         try:
             should_end = await self.app.push_screen_wait(
@@ -252,6 +266,7 @@ class SessionScreen(Screen[None]):
             self._summary_open = False
         if should_end:
             self.app.exit()
+        return should_end
 
     def on_unmount(self) -> None:
         self.session.close()

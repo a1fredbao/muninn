@@ -13,6 +13,7 @@ from src.services.study_session import StudySession
 from src.tui.app import MuninnApp
 from src.tui.screens.dialogs import (
     InstallDialog,
+    JudgeErrorDialog,
     OperationDialog,
     SessionSummaryDialog,
 )
@@ -23,7 +24,7 @@ class _PackageManager:
     def __init__(self):
         self.installed = []
 
-    def list_packs(self):
+    def list_packs(self, progress=None):
         return [
             {
                 "id": "sample",
@@ -80,6 +81,26 @@ class _CapturePlugin(BaseRecitePlugin):
     def check_answer(self, problem_id, user_input):
         self.received.append(user_input)
         return True
+
+    def get_expected_display(self, problem_id):
+        return "1"
+
+
+class _FailingPlugin(BaseRecitePlugin):
+    def __init__(self):
+        super().__init__("")
+
+    def load_data(self):
+        self.ids = ["1"]
+
+    def get_all_problem_ids(self):
+        return self.ids
+
+    def render_statement(self, problem_id):
+        return "Failing question"
+
+    def check_answer(self, problem_id, user_input):
+        raise RuntimeError("judge failed")
 
     def get_expected_display(self, problem_id):
         return "1"
@@ -236,5 +257,37 @@ def test_multiline_answer_submits_on_enter():
 
             assert screen.phase == "feedback"
             assert plugin.received == ["a\nb\nc"]
+
+    asyncio.run(exercise())
+
+
+def test_continue_from_judge_error_restores_answer_input():
+    async def exercise():
+        session = StudySession("failing", _FailingPlugin(), _state_manager())
+        app = MuninnApp(package_manager=_PackageManager())
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause()
+            await app.push_screen(SessionScreen(session))
+            await pilot.pause()
+            screen = app.screen
+            assert isinstance(screen, SessionScreen)
+
+            await pilot.click("#answer")
+            await pilot.press("1", "enter")
+            for _ in range(50):
+                await pilot.pause(0.02)
+                if isinstance(app.screen, JudgeErrorDialog):
+                    break
+            assert isinstance(app.screen, JudgeErrorDialog)
+
+            await pilot.click("#end")
+            await pilot.pause()
+            assert isinstance(app.screen, SessionSummaryDialog)
+            await pilot.press("escape")
+            await pilot.pause()
+
+            assert app.screen is screen
+            assert screen.phase == "ready"
+            assert not screen.query_one("#answer", TextArea).disabled
 
     asyncio.run(exercise())

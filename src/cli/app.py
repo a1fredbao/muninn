@@ -59,7 +59,7 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
                 return 1
 
         elif args.command == "list":
-            presenter.packs(manager.list_packs())
+            presenter.packs(manager.list_packs(progress=presenter.progress))
 
         elif args.command == "run":
             from ..tui.app import MuninnApp

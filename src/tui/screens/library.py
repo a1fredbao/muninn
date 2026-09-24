@@ -69,7 +69,7 @@ class LibraryScreen(Screen[None]):
         self._packs = {}
 
         for pack in sorted(
-            self.package_manager.list_packs(),
+            self.package_manager.list_packs(progress=self._report_pack_progress),
             key=lambda item: str(item.get("id", "")),
         ):
             pack_id = str(pack.get("id", ""))
@@ -89,6 +89,14 @@ class LibraryScreen(Screen[None]):
             self._show_details(self._packs[row])
         else:
             self._clear_details()
+
+    def _report_pack_progress(self, event: PackageProgress) -> None:
+        self.notify(
+            event.message,
+            severity="warning",
+            timeout=4,
+            markup=False,
+        )
 
     def _selected_pack_id(self) -> str | None:
         table = self.query_one("#pack-table", DataTable)

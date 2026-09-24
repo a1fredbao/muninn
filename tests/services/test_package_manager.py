@@ -349,6 +349,39 @@ class TestListPacks:
         ids = {p["id"] for p in packs}
         assert ids == {"pack_a", "pack_b"}
 
+    def test_skips_malformed_manifests(self, tmp_workspace, monkeypatch):
+        packs_dir = os.path.join(tmp_workspace, "packs")
+        os.makedirs(packs_dir)
+        m = PackageManager()
+        monkeypatch.setattr(m, "packs_dir", packs_dir)
+
+        invalid_json = os.path.join(packs_dir, "invalid-json")
+        os.makedirs(invalid_json)
+        with open(os.path.join(invalid_json, "manifest.json"), "w") as f:
+            f.write("{")
+
+        invalid_shape = os.path.join(packs_dir, "invalid-shape")
+        os.makedirs(invalid_shape)
+        with open(os.path.join(invalid_shape, "manifest.json"), "w") as f:
+            json.dump(["not", "an", "object"], f)
+
+        missing_id = os.path.join(packs_dir, "missing-id")
+        os.makedirs(missing_id)
+        with open(os.path.join(missing_id, "manifest.json"), "w") as f:
+            json.dump({"name": "Missing ID"}, f)
+
+        valid = os.path.join(packs_dir, "valid")
+        os.makedirs(valid)
+        with open(os.path.join(valid, "manifest.json"), "w") as f:
+            json.dump({"id": "valid", "name": "Valid"}, f)
+
+        events = []
+        packs = m.list_packs(progress=events.append)
+
+        assert [pack["id"] for pack in packs] == ["valid"]
+        assert len(events) == 3
+        assert all("Skipping invalid manifest" in event.message for event in events)
+
 
 class TestVersion:
     def test_version_tuple(self):
