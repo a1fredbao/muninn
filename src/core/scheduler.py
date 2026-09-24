@@ -53,8 +53,6 @@ class Scheduler:
             return False
 
         self.active_problem_ids.remove(problem_id)
-        self.q_queue = [
-            item for item in self.q_queue if item[1] != problem_id
-        ]
+        self.q_queue = [item for item in self.q_queue if item[1] != problem_id]
         heapq.heapify(self.q_queue)
         return True

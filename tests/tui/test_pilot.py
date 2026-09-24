@@ -176,8 +176,7 @@ def test_ctrl_q_shows_notice_without_quitting():
             await pilot.pause()
             assert app.is_running
             assert any(
-                "Ctrl+C" in notification.message
-                for notification in app._notifications
+                "Ctrl+C" in notification.message for notification in app._notifications
             )
 
     asyncio.run(exercise())
