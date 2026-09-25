@@ -1,7 +1,7 @@
 # Muninn
 
-Muninn is a highly extensible CLI application for memorisation. It uses a
-**plugin architecture** — install community-made "reciting packs" for
+Muninn is a highly extensible CLI application for training. It uses a
+**plugin architecture** — install community-made "training packs" for
 chemistry, vocabulary, history, or write your own in Python.
 
 Muninn provides:
@@ -9,7 +9,7 @@ Muninn provides:
 - **Smart scheduling** that targets your weak points based on accuracy and
   response time.
 - **Persistent state** so progress survives across sessions.
-- **A Textual pack library and reciting UI** with keyboard-driven
+- **A Textual pack library and training UI** with keyboard-driven
   management and progress feedback.
 
 ---

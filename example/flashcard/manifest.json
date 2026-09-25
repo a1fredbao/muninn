@@ -3,5 +3,7 @@
     "name": "GRE 核心词汇闪卡",
     "author": "Muninn",
     "version": "1.0.0",
-    "description": "GRE 高频核心词汇的正反面闪卡背诵"
+    "description": "GRE 高频核心词汇的正反面闪卡训练",
+    "entrypoint": "plugin:Plugin",
+    "api_version": "1"
 }

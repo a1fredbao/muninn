@@ -1,6 +1,6 @@
 [project]
 site_name = "Muninn"
-site_description = "The Extensible Reciting CLI – Documentation"
+site_description = "The Extensible Training CLI – Documentation"
 site_url = "https://a1fredbao.github.io/muninn/"
 repo_url = "https://github.com/a1fredbao/muninn"
 edit_uri = "edit/main/docs/"
@@ -11,7 +11,7 @@ nav = [
     { "Command Reference" = "commands.md" },
     { "Plugin Development" = [
         { "Overview" = "plugin-dev.md" },
-        { "BaseRecitePlugin" = "api/base-plugin.md" },
+        { "BaseTrainingPlugin" = "api/base-training-plugin.md" },
         { "DataPlugin" = "api/data-plugin.md" },
         { "FlashcardPlugin" = "api/flashcard.md" },
         { "Matchers" = "api/matchers.md" },

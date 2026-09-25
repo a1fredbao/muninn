@@ -1,4 +1,4 @@
-from core.helpers import FlashcardPlugin
+from muninn.core.helpers import FlashcardPlugin
 
 
 class Plugin(FlashcardPlugin):

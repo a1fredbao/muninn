@@ -3,5 +3,7 @@
   "name": "hiragana Pack",
   "author": "Your Name",
   "version": "1.0.0",
-  "description": "hiragana to syllables"
+  "description": "hiragana to syllables",
+  "entrypoint": "plugin:Plugin",
+  "api_version": "1"
 }

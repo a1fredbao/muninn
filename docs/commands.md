@@ -2,7 +2,7 @@
 
 ## `muninn install`
 
-Install a reciting pack.
+Install a training pack.
 
 ```bash
 muninn install <source>
@@ -27,11 +27,12 @@ that `muninn upgrade` knows where to check for updates later.
 ### Dependencies
 
 If a pack includes a `requirements.txt` at its root, Muninn creates an
-isolated virtual environment at `~/.muninn/venvs/<pack_id>/` and
-installs the declared packages there.  Each pack gets its own venv, so
+isolated virtual environment at
+`~/.muninn/venvs/<pack_id>/<version>/` and installs the declared
+packages there. Each pack session runs in its own worker process, so
 two packs can depend on different versions of the same library without
-conflict.  No manual `pip install` step is required — the next
-`muninn run` will find the installed packages automatically.
+conflict. No manual `pip install` step is required: the next
+`muninn run` starts the plugin in that environment automatically.
 
 This is designed for packs that need third-party libraries (e.g. `openai`
 for AI-powered answer checking, `requests` for fetching live data).  The
@@ -83,7 +84,7 @@ muninn list
 
 ## `muninn run`
 
-Start a reciting session for a pack.
+Start a training session for a pack.
 
 ```bash
 muninn run <pack_id>
@@ -102,7 +103,7 @@ During a session:
 - Wait while Muninn shows `Judging...` when a plugin performs a slow
   synchronous or asynchronous answer check.
 - Press `Esc` to return to the pack library.
-- Press `Ctrl+C` to review the session summary and quit.
+- Press `Ctrl+C` to view the session summary and quit.
 - Press `Ctrl+Q` to show a reminder that `Ctrl+C` is now the quit
   shortcut.
 
