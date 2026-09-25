@@ -1,7 +1,7 @@
 {
   "id": "hiragana",
   "name": "hiragana Pack",
-  "author": "Your Name",
+  "author": "Alfred Bao",
   "version": "1.0.0",
   "description": "hiragana to syllables",
   "entrypoint": "plugin:Plugin",
