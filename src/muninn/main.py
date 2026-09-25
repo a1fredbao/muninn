@@ -1,6 +1,6 @@
 """Package entry point."""
 
-from src.cli.app import run_cli
+from .cli.app import run_cli
 
 
 def main() -> None:

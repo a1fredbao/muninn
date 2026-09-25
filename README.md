@@ -1,12 +1,12 @@
 # Muninn
 
-Muninn (雾尼) - An Extensible Reciting CLI.
+Muninn (雾尼) - An Extensible Training CLI.
 
 [中文文档](./README_zh.md) &nbsp;|&nbsp;[Documentation](https://a1fredbao.github.io/muninn/)
 
 ## What is Muninn?
 
-Muninn is a highly extensible CLI application designed to help you memorize anything. Instead of hardcoding questions, Muninn relies on a **Plugin Architecture**. You can install "Reciting Packs" created by others (like chemistry elements, GRE vocabulary, or historical events) or develop your own packs using Python.
+Muninn is a highly extensible CLI application designed to train memory and problem-solving skills. Instead of hardcoding questions, Muninn relies on a **Plugin Architecture**. You can install "Training Packs" created by others (like chemistry elements, GRE vocabulary, or historical events) or develop your own packs using Python.
 
 Muninn acts as a "host" that provides:
 
@@ -48,7 +48,7 @@ muninn run muninn-chemistry-plugin
 | `muninn uninstall <pack_id>` | Remove a pack.                                                |
 | `muninn upgrade [pack_id]`   | Upgrade one or all packs.                                     |
 | `muninn list`                | List installed packs in the traditional CLI.                  |
-| `muninn run <pack_id>`       | Open a Textual reciting session for one pack.                 |
+| `muninn run <pack_id>`       | Open a Textual training session for one pack.                 |
 | `muninn new <name>`          | Generate a plugin template.                                   |
 
 In the Textual library:

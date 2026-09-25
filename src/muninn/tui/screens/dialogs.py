@@ -11,7 +11,7 @@ from textual.containers import Container, Horizontal
 from textual.screen import ModalScreen
 from textual.widgets import Button, Input, Label, RichLog, Static
 
-from ...services.study_session import StudyStats
+from ...services.training_session import TrainingStats
 
 
 class ConfirmDialog(ModalScreen[bool]):
@@ -133,7 +133,7 @@ class SessionSummaryDialog(ModalScreen[bool]):
 
     BINDINGS: ClassVar[list[BindingType]] = [("escape", "continue_session", "Continue")]
 
-    def __init__(self, stats: StudyStats) -> None:
+    def __init__(self, stats: TrainingStats) -> None:
         super().__init__()
         self.stats = stats
 

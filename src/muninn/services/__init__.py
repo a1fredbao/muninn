@@ -7,14 +7,14 @@ from .package_manager import (
     PackageProgress,
     UpgradeResult,
 )
-from .study_session import StudySession, StudyStats
+from .training_session import TrainingSession, TrainingStats
 
 __all__ = [
     "CancellationToken",
     "OperationCancelled",
     "PackageManager",
     "PackageProgress",
-    "StudySession",
-    "StudyStats",
+    "TrainingSession",
+    "TrainingStats",
     "UpgradeResult",
 ]

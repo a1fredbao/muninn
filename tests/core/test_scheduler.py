@@ -1,6 +1,7 @@
 """Tests for src/core/scheduler.py."""
 
-from src.core.scheduler import Scheduler
+from muninn.core.scheduler import Scheduler, WeightedTrainingPolicy
+from muninn.domain import ProblemStats
 
 
 class TestScheduler:
@@ -86,3 +87,15 @@ class TestScheduler:
         while (next_problem := s.next_problem()) is not None:
             remaining.add(next_problem)
         assert problem_id not in remaining
+
+    def test_bounded_policy_does_not_let_attempt_count_dominate(self):
+        policy = WeightedTrainingPolicy(random_value=lambda: 0.0)
+        mastered = policy.score(
+            "mastered",
+            ProblemStats(ac_count=1000, total_count=1000, total_ac_time=1.0),
+        )
+        weak = policy.score(
+            "weak",
+            ProblemStats(ac_count=0, total_count=1, total_ac_time=0.0),
+        )
+        assert weak > mastered

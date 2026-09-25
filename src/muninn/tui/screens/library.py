@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 from typing import ClassVar
 
 from textual.app import ComposeResult
@@ -11,14 +10,14 @@ from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header, LoadingIndicator, Static
 
-from ...core.state import StateManager
+from ...services.manifest import PackSummary
 from ...services.package_manager import (
     CancellationToken,
     OperationCancelled,
     PackageManager,
     PackageProgress,
 )
-from ...services.study_session import StudySession
+from ...services.session_factory import SessionFactory
 from .dialogs import (
     ConfirmDialog,
     InstallDialog,
@@ -31,7 +30,7 @@ class LibraryScreen(Screen[None]):
     """List installed packs and expose all package-management actions."""
 
     BINDINGS: ClassVar[list[BindingType]] = [
-        Binding("enter", "study", "Study", show=True, priority=True),
+        Binding("enter", "train", "Train", show=True, priority=True),
         Binding("i", "install", "Install", show=True),
         Binding("u", "upgrade_selected", "Upgrade", show=True),
         Binding("U", "upgrade_all", "Upgrade all", show=True),
@@ -39,10 +38,15 @@ class LibraryScreen(Screen[None]):
         Binding("r", "refresh", "Refresh", show=True),
     ]
 
-    def __init__(self, package_manager: PackageManager) -> None:
+    def __init__(
+        self,
+        package_manager: PackageManager,
+        session_factory: SessionFactory,
+    ) -> None:
         super().__init__()
         self.package_manager = package_manager
-        self._packs: dict[str, dict] = {}
+        self.session_factory = session_factory
+        self._packs: dict[str, PackSummary] = {}
         self._loading_session = False
 
     def compose(self) -> ComposeResult:
@@ -68,19 +72,14 @@ class LibraryScreen(Screen[None]):
         table.clear()
         self._packs = {}
 
-        for pack in sorted(
-            self.package_manager.list_packs(progress=self._report_pack_progress),
-            key=lambda item: str(item.get("id", "")),
-        ):
-            pack_id = str(pack.get("id", ""))
-            if not pack_id:
-                continue
-            self._packs[pack_id] = pack
+        for summary in self.package_manager.list_pack_summaries():
+            pack_id = summary.pack_id
+            self._packs[pack_id] = summary
             table.add_row(
                 pack_id,
-                str(pack.get("name", "")),
-                str(pack.get("version", "")),
-                str(pack.get("author") or ""),
+                summary.name,
+                summary.version,
+                summary.author,
                 key=pack_id,
             )
 
@@ -105,18 +104,24 @@ class LibraryScreen(Screen[None]):
         key = table.coordinate_to_cell_key(table.cursor_coordinate).row_key
         return str(key.value) if key.value is not None else None
 
-    def _show_details(self, pack: dict) -> None:
-        self.query_one("#pack-name", Static).update(str(pack.get("name", "")))
+    def _show_details(self, pack: PackSummary) -> None:
+        self.query_one("#pack-name", Static).update(pack.name)
+        if not pack.valid:
+            self.query_one("#pack-metadata", Static).update(
+                f"ID: {pack.pack_id}\nStatus: invalid"
+            )
+            self.query_one("#pack-description", Static).update(
+                pack.error or "The pack manifest is invalid."
+            )
+            return
         metadata = (
-            f"ID: {pack.get('id', '')}\n"
-            f"Version: {pack.get('version', '')}\n"
-            f"Author: {pack.get('author') or '-'}\n"
-            f"Source: {pack.get('source') or '-'}"
+            f"ID: {pack.pack_id}\n"
+            f"Version: {pack.version}\n"
+            f"Author: {pack.author or '-'}\n"
+            f"Source: {pack.source or '-'}"
         )
         self.query_one("#pack-metadata", Static).update(metadata)
-        self.query_one("#pack-description", Static).update(
-            str(pack.get("description") or "")
-        )
+        self.query_one("#pack-description", Static).update(pack.description)
 
     def _clear_details(self) -> None:
         self.query_one("#pack-name", Static).update("No packs installed")
@@ -135,9 +140,9 @@ class LibraryScreen(Screen[None]):
         self,
         event: DataTable.RowSelected,
     ) -> None:
-        self.action_study()
+        self.action_train()
 
-    def action_study(self) -> None:
+    def action_train(self) -> None:
         pack_id = self._selected_pack_id()
         if pack_id is not None:
             self.open_pack(pack_id)
@@ -156,11 +161,7 @@ class LibraryScreen(Screen[None]):
 
     async def _load_session(self, pack_id: str) -> None:
         try:
-            plugin = await asyncio.to_thread(
-                self.package_manager.load_plugin,
-                pack_id,
-            )
-            session = StudySession(pack_id, plugin, StateManager(pack_id))
+            session = await self.session_factory.create(pack_id)
         except Exception as exc:  # noqa: BLE001
             self.notify(str(exc), title="Unable to load pack", severity="error")
         else:
@@ -183,12 +184,14 @@ class LibraryScreen(Screen[None]):
             return
 
         def operation(progress, cancel_token):
-            pack_id = self.package_manager.install_pack(
+            result = self.package_manager.install_pack_result(
                 source,
                 progress,
                 cancel_token,
             )
-            return True, f"Installed pack '{pack_id}'."
+            if not result.ok:
+                return False, result.error or "Install failed."
+            return True, f"Installed pack '{result.value}'."
 
         self._run_package_operation("Install pack", operation)
 
@@ -244,18 +247,20 @@ class LibraryScreen(Screen[None]):
         confirmed = await self.app.push_screen_wait(
             ConfirmDialog(
                 "Uninstall pack",
-                f"Remove '{pack_id}'? Learning progress will be kept.",
+                f"Remove '{pack_id}'? Training progress will be kept.",
             )
         )
         if not confirmed:
             return
 
         def operation(progress, cancel_token):
-            self.package_manager.uninstall_pack(
+            result = self.package_manager.uninstall_pack_result(
                 pack_id,
                 progress,
                 cancel_token,
             )
+            if not result.ok:
+                return False, result.error or f"Failed to uninstall '{pack_id}'."
             return True, f"Uninstalled pack '{pack_id}'."
 
         self._run_package_operation(f"Uninstall {pack_id}", operation)

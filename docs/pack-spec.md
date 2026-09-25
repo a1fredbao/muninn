@@ -25,7 +25,9 @@ with the same ID as an existing one overwrites the previous version.
     "name": "My Pack",
     "author": "Your Name",
     "version": "1.0.0",
-    "description": "A brief description."
+    "description": "A brief description.",
+    "entrypoint": "plugin:Plugin",
+    "api_version": "1"
 }
 ```
 
@@ -37,6 +39,11 @@ with the same ID as an existing one overwrites the previous version.
 | `version`     | string | Yes      | Semantic version (`MAJOR.MINOR.PATCH`).                                                                                                                                                                       |
 | `description` | string | No       | Short description of the pack's content.                                                                                                                                                                      |
 | `source`      | string | Auto     | Set by Muninn on install. Tracks where the pack came from so `muninn upgrade` knows where to check for updates. One of `local:<abspath>`, `github:user/repo`, or `github:user/repo@ref`. Do not set manually. |
+| `entrypoint`  | string | Yes      | Plugin class location in `module:ClassName` form.                                                                                                                                                             |
+| `api_version` | string | Yes      | Plugin API version. Current version is `1`; missing values are treated as legacy `0`.                                                                                                                        |
+
+Record IDs and question keys must be stable across pack updates. Muninn
+uses `<record_id>::<question_key>` as the persistent progress key.
 
 ## Distribution
 
@@ -77,10 +84,10 @@ openai>=1.0.0
 httpx>=0.27.0
 ```
 
-Muninn creates an isolated virtual environment at
-`~/.muninn/venvs/<pack_id>/` for each pack and installs the declared
-packages there automatically during `muninn install` and
-`muninn upgrade`.  No action is needed from the user.
+Muninn creates a versioned isolated virtual environment at
+`~/.muninn/venvs/<pack_id>/<version>/` for each pack and installs the
+declared packages there automatically. Each training session runs the
+plugin in a dedicated worker process with that environment.
 
 If dependency installation fails (e.g. a typo in the package name, a
 network error), Muninn does **not** replace the pack.  The existing

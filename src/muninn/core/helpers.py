@@ -6,7 +6,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
-from .base_plugin import BaseRecitePlugin
+from ..plugin_api import BaseTrainingPlugin
 
 # ---------------------------------------------------------------------------
 # Matchers – factory functions for reusable answer-checking logic
@@ -95,6 +95,11 @@ class QuestionType:
     statement: Callable[[dict], str]
     answer: Callable[[dict], str]
     matcher: Callable[[dict, str], bool]
+    key: str | None = None
+
+    @property
+    def stable_key(self) -> str:
+        return self.key or self.label
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +107,7 @@ class QuestionType:
 # ---------------------------------------------------------------------------
 
 
-class DataPlugin(BaseRecitePlugin):
+class DataPlugin(BaseTrainingPlugin):
     """Higher-level plugin for "entity + multi-question-direction" scenarios.
 
     Subclasses supply:
@@ -117,15 +122,36 @@ class DataPlugin(BaseRecitePlugin):
     """
 
     QUESTION_TYPES: ClassVar[list[QuestionType]] = []
+    RECORD_ID_FIELD: ClassVar[str] = "id"
+
+    def record_id(self, record: dict[str, Any], index: int) -> str:
+        """Return a stable ID for a record.
+
+        New packs should include an ``id`` field. The index fallback keeps
+        old packs loadable while making the migration requirement explicit.
+        """
+
+        value = record.get(self.RECORD_ID_FIELD)
+        if value is not None and str(value).strip():
+            return str(value).strip()
+        return f"legacy-{index}"
 
     def load_data(self) -> None:
         self._records = self.load_records()
         self._problem_map: dict[str, tuple[dict, QuestionType]] = {}
+        self._legacy_problem_map: dict[str, str] = {}
+        self._legacy_problem_ids: dict[str, str] = {}
         for i, record in enumerate(self._records):
+            record_id = self.record_id(record, i)
             for qt in self.QUESTION_TYPES:
                 if self.filter(record, qt):
-                    pid = f"{i}__{qt.label}"
+                    pid = f"{record_id}::{qt.stable_key}"
+                    if pid in self._problem_map:
+                        raise ValueError(f"Duplicate problem ID: {pid}")
                     self._problem_map[pid] = (record, qt)
+                    legacy_pid = f"{i}__{qt.label}"
+                    self._legacy_problem_map[pid] = legacy_pid
+                    self._legacy_problem_ids[legacy_pid] = pid
 
     def load_records(self) -> list[dict[str, Any]]:
         """Override to return a list of data records from workspace_dir."""
@@ -138,10 +164,15 @@ class DataPlugin(BaseRecitePlugin):
     def _resolve(self, problem_id: str) -> tuple[dict, QuestionType]:
         return self._problem_map[problem_id]
 
-    # -- BaseRecitePlugin interface -----------------------------------------
+    # -- BaseTrainingPlugin interface -----------------------------------------
 
     def get_all_problem_ids(self) -> list[str]:
         return list(self._problem_map.keys())
+
+    def get_legacy_problem_id_map(self) -> dict[str, str]:
+        """Map persisted legacy IDs to their new stable IDs."""
+
+        return dict(self._legacy_problem_ids)
 
     def render_statement(self, problem_id: str) -> str:
         record, qt = self._resolve(problem_id)
@@ -178,6 +209,14 @@ class FlashcardPlugin(DataPlugin):
     """
 
     DATA_FILE: str = ""
+    RECORD_ID_FIELD: ClassVar[str] = "id"
+
+    def record_id(self, record: dict[str, Any], index: int) -> str:
+        for field in ("id", "front"):
+            value = record.get(field)
+            if value is not None and str(value).strip():
+                return str(value).strip()
+        return f"legacy-{index}"
 
     def load_data(self) -> None:
         path = os.path.join(self.workspace_dir, self.DATA_FILE)
@@ -201,5 +240,12 @@ class FlashcardPlugin(DataPlugin):
         )
 
         self._problem_map: dict[str, tuple[dict, QuestionType]] = {}
+        self._legacy_problem_map: dict[str, str] = {}
+        self._legacy_problem_ids: dict[str, str] = {}
         for i, record in enumerate(self._records):
-            self._problem_map[str(i)] = (record, qt)
+            pid = self.record_id(record, i)
+            if pid in self._problem_map:
+                raise ValueError(f"Duplicate flashcard ID: {pid}")
+            self._problem_map[pid] = (record, qt)
+            self._legacy_problem_map[pid] = str(i)
+            self._legacy_problem_ids[str(i)] = pid

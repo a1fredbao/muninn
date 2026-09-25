@@ -8,6 +8,7 @@ from textual.app import App
 from textual.binding import Binding, BindingType
 
 from ..services.package_manager import PackageManager
+from ..services.session_factory import SessionFactory
 from .screens.library import LibraryScreen
 from .screens.session import SessionScreen
 
@@ -17,7 +18,7 @@ class MuninnApp(App[None]):
 
     CSS_PATH = "app.tcss"
     TITLE = "Muninn"
-    SUB_TITLE = "An extensible reciting CLI"
+    SUB_TITLE = "An extensible training CLI"
 
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding(
@@ -40,14 +41,19 @@ class MuninnApp(App[None]):
         self,
         initial_pack_id: str | None = None,
         package_manager: PackageManager | None = None,
+        session_factory: SessionFactory | None = None,
     ) -> None:
         super().__init__()
         self.package_manager = package_manager or PackageManager()
+        self.session_factory = session_factory or SessionFactory(self.package_manager)
         self.initial_pack_id = initial_pack_id
         self._library_screen: LibraryScreen | None = None
 
     def on_mount(self) -> None:
-        self._library_screen = LibraryScreen(self.package_manager)
+        self._library_screen = LibraryScreen(
+            self.package_manager,
+            self.session_factory,
+        )
         self.push_screen(self._library_screen)
         if self.initial_pack_id:
             self.call_after_refresh(self._open_initial_pack)

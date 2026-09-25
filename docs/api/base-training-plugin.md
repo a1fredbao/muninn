@@ -1,14 +1,15 @@
-# BaseRecitePlugin
+# BaseTrainingPlugin
 
-`BaseRecitePlugin` is the lowest-level plugin interface.  Implement all
+`BaseTrainingPlugin` is the lowest-level plugin interface. Implement all
 five methods for full control over rendering, answer checking, and
-metadata display.
+metadata display. New plugins should import it from the stable
+`muninn.plugin_api` namespace.
 
 ``` python
-from core.base_plugin import BaseRecitePlugin
+from muninn.plugin_api import BaseTrainingPlugin
 
 
-class Plugin(BaseRecitePlugin):
+class Plugin(BaseTrainingPlugin):
     def load_data(self):
         """Load static data from ``self.workspace_dir``.  Called once
         at initialisation."""
@@ -51,12 +52,15 @@ async def check_answer(
 
 ## Lifecycle
 
-1. Muninn calls `__init__(workspace_dir)`, which calls `load_data()`.
-2. Muninn calls `get_all_problem_ids()` to build the scheduler queue.
-3. For each problem, Muninn calls `render_statement()` -> captures user
+1. Muninn constructs the plugin with `workspace_dir`.
+2. Muninn calls `initialize(context)`.
+3. Muninn calls `get_all_problem_ids()` to build the scheduler queue.
+4. For each problem, Muninn calls `render_statement()` -> captures user
    input -> calls `check_answer()`.
-4. On correct answer: `get_expand_info()` is shown.
-5. On wrong answer: `get_expected_display()` is shown.
+5. On correct answer: `get_expand_info()` is shown.
+6. On wrong answer: `get_expected_display()` is shown.
+7. Muninn calls `close()` when the session ends.
+
 
 ## `workspace_dir`
 
