@@ -1,7 +1,7 @@
 """Regression tests for safe Rich markup rendering."""
 
-from src.cli.console import ConsolePresenter
-from src.services.package_manager import UpgradeResult
+from muninn.cli.console import ConsolePresenter
+from muninn.services.package_manager import UpgradeResult
 
 
 def test_dynamic_status_messages_are_rendered_as_literal_text(capsys):

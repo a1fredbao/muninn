@@ -12,9 +12,9 @@ ROOT = Path(__file__).resolve().parents[2]
 def _run_cli(*args: str, home: Path) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["HOME"] = str(home)
-    env["PYTHONPATH"] = str(ROOT)
+    env["PYTHONPATH"] = str(ROOT / "src")
     return subprocess.run(
-        [sys.executable, "-m", "src.main", *args],
+        [sys.executable, "-m", "muninn.main", *args],
         cwd=ROOT,
         env=env,
         capture_output=True,
@@ -32,13 +32,15 @@ def _make_pack(path: Path, pack_id: str) -> None:
                 "id": pack_id,
                 "name": pack_id,
                 "version": "1.0.0",
+                "entrypoint": "plugin:Plugin",
+                "api_version": "1",
             }
         ),
         encoding="utf-8",
     )
     (path / "plugin.py").write_text(
-        "from core.base_plugin import BaseRecitePlugin\n"
-        "class Plugin(BaseRecitePlugin):\n"
+        "from muninn.plugin_api import BaseTrainingPlugin\n"
+        "class Plugin(BaseTrainingPlugin):\n"
         "    def load_data(self): self.ids=[]\n"
         "    def get_all_problem_ids(self): return self.ids\n"
         "    def render_statement(self, pid): return ''\n"

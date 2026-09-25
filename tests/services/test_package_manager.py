@@ -1,34 +1,41 @@
-"""Tests for src/services/package_manager.py."""
+"""Tests for the package-management facade and its subsystems."""
 
+import asyncio
 import json
 import os
-import shutil
+from pathlib import Path
 
 import pytest
 
-from src.services.package_manager import PackageManager
-
-# -----------------------------------------------------------------------
-# Helpers
-# -----------------------------------------------------------------------
+from muninn.services.manifest import PackManifest
+from muninn.services.pack_installer import PackSourceResolver
+from muninn.services.package_manager import PackageManager
 
 
-def _make_minimal_pack(path, pack_id="test-pack", version="1.0.0"):
-    """Write a minimal valid pack (manifest.json + plugin.py) into *path*."""
-    os.makedirs(path, exist_ok=True)
-    manifest = {
-        "id": pack_id,
-        "name": f"{pack_id} Name",
-        "author": "Tester",
-        "version": version,
-        "description": "Test pack",
-    }
-    with open(os.path.join(path, "manifest.json"), "w", encoding="utf-8") as f:
-        json.dump(manifest, f, indent=4)
+def _write_pack(
+    path: Path,
+    pack_id: str = "test-pack",
+    version: str = "1.0.0",
+) -> None:
+    path.mkdir(parents=True, exist_ok=True)
+    manifest = PackManifest(
+        id=pack_id,
+        name=f"{pack_id} Name",
+        author="Tester",
+        version=version,
+        description="Test pack",
+        entrypoint="plugin:Plugin",
+        api_version="1",
+    )
+    (path / "manifest.json").write_text(
+        json.dumps(manifest.to_dict(), indent=4),
+        encoding="utf-8",
+    )
+    (path / "plugin.py").write_text(
+        """from muninn.plugin_api import BaseTrainingPlugin
 
-    plugin_code = """from core.base_plugin import BaseRecitePlugin
 
-class Plugin(BaseRecitePlugin):
+class Plugin(BaseTrainingPlugin):
     def load_data(self):
         self.ids = ["1", "2"]
 
@@ -36,6 +43,7 @@ class Plugin(BaseRecitePlugin):
         return self.ids
 
     def render_statement(self, problem_id):
+        print("plugin debug")
         return f"Q{problem_id}"
 
     def check_answer(self, problem_id, user_input):
@@ -43,483 +51,298 @@ class Plugin(BaseRecitePlugin):
 
     def get_expected_display(self, problem_id):
         return f"A{problem_id}"
-"""
-    with open(os.path.join(path, "plugin.py"), "w", encoding="utf-8") as f:
-        f.write(plugin_code)
+""",
+        encoding="utf-8",
+    )
 
 
-# -----------------------------------------------------------------------
-# Tests
-# -----------------------------------------------------------------------
+@pytest.fixture
+def manager(tmp_path):
+    return PackageManager(
+        packs_dir=str(tmp_path / "packs"),
+        venvs_dir=str(tmp_path / "venvs"),
+    )
 
 
 class TestCreateTemplate:
-    def test_creates_expected_files(self, tmp_workspace):
-        m = PackageManager()
-        m.create_template("my-pack", tmp_workspace)
-        pack_dir = os.path.join(tmp_workspace, "my-pack")
-        assert os.path.isdir(pack_dir)
-        assert os.path.isfile(os.path.join(pack_dir, "manifest.json"))
-        assert os.path.isfile(os.path.join(pack_dir, "plugin.py"))
+    def test_creates_expected_files_and_contract(self, tmp_path):
+        manager = PackageManager(
+            packs_dir=str(tmp_path / "packs"),
+            venvs_dir=str(tmp_path / "venvs"),
+        )
+        pack_dir = Path(manager.create_template("my-pack", str(tmp_path)))
 
-    def test_correct_manifest_content(self, tmp_workspace):
-        m = PackageManager()
-        m.create_template("my-pack", tmp_workspace)
-        with open(os.path.join(tmp_workspace, "my-pack", "manifest.json")) as f:
-            manifest = json.load(f)
-        assert manifest["id"] == "my-pack"
+        manifest = json.loads((pack_dir / "manifest.json").read_text())
+        plugin_code = (pack_dir / "plugin.py").read_text()
 
-    def test_raises_if_exists(self, tmp_workspace):
-        m = PackageManager()
-        m.create_template("dup", tmp_workspace)
+        assert manifest["entrypoint"] == "plugin:Plugin"
+        assert manifest["api_version"] == "1"
+        assert "muninn.core.helpers" in plugin_code
+
+    def test_raises_if_exists(self, manager, tmp_path):
+        manager.create_template("dup", str(tmp_path))
         with pytest.raises(FileExistsError):
-            m.create_template("dup", tmp_workspace)
+            manager.create_template("dup", str(tmp_path))
 
 
-class TestInstallLocal:
-    def test_records_local_source(self, tmp_workspace, monkeypatch):
-        src = os.path.join(tmp_workspace, "mypack")
-        _make_minimal_pack(src, pack_id="mypack")
-        packs_dir = os.path.join(tmp_workspace, "fake_muninn", "packs")
-        os.makedirs(packs_dir, exist_ok=True)
+class TestInstallAndUninstall:
+    def test_records_local_source_and_overwrites(self, manager, tmp_path):
+        source = tmp_path / "source"
+        _write_pack(source, "mypack")
 
-        m = PackageManager()
-        monkeypatch.setattr(m, "packs_dir", packs_dir)
+        assert manager.install_pack(str(source)) == "mypack"
+        manifest = json.loads(
+            (Path(manager.packs_dir) / "mypack" / "manifest.json").read_text()
+        )
+        assert manifest["source"] == f"local:{source.resolve()}"
 
-        m.install_pack(src)
+        assert manager.install_pack(str(source)) == "mypack"
 
-        # Verify source was recorded in the installed manifest
-        installed = os.path.join(packs_dir, "mypack", "manifest.json")
-        with open(installed) as f:
-            manifest = json.load(f)
-        assert manifest["source"] == f"local:{os.path.abspath(src)}"
-
-    def test_install_overwrites_existing(self, tmp_workspace, monkeypatch):
-        src = os.path.join(tmp_workspace, "mypack")
-        _make_minimal_pack(src, pack_id="mypack")
-        packs_dir = os.path.join(tmp_workspace, "fake_muninn", "packs")
-        os.makedirs(packs_dir, exist_ok=True)
-
-        m = PackageManager()
-        monkeypatch.setattr(m, "packs_dir", packs_dir)
-
-        m.install_pack(src)
-        pack_id = m.install_pack(src)
-        assert pack_id == "mypack"
-
-    def test_raises_for_nonexistent_local_path(self):
-        m = PackageManager()
+    def test_raises_for_nonexistent_path(self, manager):
         with pytest.raises(FileNotFoundError):
-            m.install_pack("/nonexistent/path/to/pack")
+            manager.install_pack("/nonexistent/path/to/pack")
 
+    def test_uninstall_removes_pack_and_environment(self, manager, tmp_path):
+        source = tmp_path / "source"
+        _write_pack(source, "mypack")
+        manager.install_pack(str(source))
 
-class TestSourceDetection:
-    def test_is_url(self):
-        assert PackageManager._is_url("https://github.com/a/b")
-        assert not PackageManager._is_url("./local-pack")
-        assert not PackageManager._is_url("user/repo")
+        versioned_env = Path(manager.dependencies.venvs_dir) / "mypack" / "1.0.0"
+        versioned_env.mkdir(parents=True)
 
-    def test_is_github_short(self):
-        assert PackageManager._is_github_short("user/repo")
-        assert PackageManager._is_github_short("a-b/c_d")
-        assert PackageManager._is_github_short("user/repo@v1.0.0")
-        assert not PackageManager._is_github_short("./local")
+        manager.uninstall_pack("mypack")
 
-    def test_github_short_to_url(self):
-        assert (
-            PackageManager._github_short_to_url("user/repo")
-            == "https://github.com/user/repo/archive/refs/heads/main.zip"
-        )
+        assert not (Path(manager.packs_dir) / "mypack").exists()
+        assert not (Path(manager.dependencies.venvs_dir) / "mypack").exists()
 
-    def test_resolve_download_url(self):
-        url = PackageManager._resolve_download_url("https://github.com/user/repo")
-        assert url == "https://github.com/user/repo/archive/refs/heads/main.zip"
-
-        direct = "https://example.com/pack.zip"
-        assert PackageManager._resolve_download_url(direct) == direct
-
-    def test_github_source_key(self):
-        assert (
-            PackageManager._github_source_key("https://github.com/u/r") == "github:u/r"
-        )
-        assert (
-            PackageManager._github_source_key("https://github.com/u/r@v1")
-            == "github:u/r@v1"
-        )
-
-
-class TestUninstallPack:
-    def test_uninstall_removes_directory(self, tmp_workspace, monkeypatch):
-        src = os.path.join(tmp_workspace, "mypack")
-        _make_minimal_pack(src, pack_id="mypack")
-        packs_dir = os.path.join(tmp_workspace, "fake_muninn", "packs")
-        os.makedirs(packs_dir, exist_ok=True)
-
-        m = PackageManager()
-        monkeypatch.setattr(m, "packs_dir", packs_dir)
-        m.install_pack(src)
-        assert os.path.isdir(os.path.join(packs_dir, "mypack"))
-        m.uninstall_pack("mypack")
-        assert not os.path.exists(os.path.join(packs_dir, "mypack"))
-
-    def test_uninstall_nonexistent_pack_raises(self, monkeypatch, tmp_workspace):
-        packs_dir = os.path.join(tmp_workspace, "fake_muninn", "packs")
-        os.makedirs(packs_dir, exist_ok=True)
-        m = PackageManager()
-        monkeypatch.setattr(m, "packs_dir", packs_dir)
+    def test_uninstall_missing_pack_raises(self, manager):
         with pytest.raises(FileNotFoundError, match="not installed"):
-            m.uninstall_pack("nonexistent")
+            manager.uninstall_pack("nonexistent")
 
-    def test_uninstall_removes_venv(self, tmp_workspace, monkeypatch):
-        """Verify that uninstall_pack removes the per-pack virtual environment."""
-        src = os.path.join(tmp_workspace, "packwithvenv")
-        _make_minimal_pack(src, pack_id="packwithvenv")
+    def test_commit_rolls_back_when_pack_switch_fails(
+        self,
+        manager,
+        tmp_path,
+        monkeypatch,
+    ):
+        old_source = tmp_path / "old"
+        _write_pack(old_source, "transaction", "1.0.0")
+        manager.install_pack(str(old_source))
 
-        # Add a requirements.txt to trigger venv creation
-        with open(os.path.join(src, "requirements.txt"), "w") as f:
-            f.write("# empty requirements\n")
+        new_source = tmp_path / "new"
+        _write_pack(new_source, "transaction", "2.0.0")
+        resolved = manager.installer.sources.resolve(str(new_source))
+        staged = manager.installer.stage(resolved)
+        real_replace = os.replace
+        replace_count = 0
 
-        packs_dir = os.path.join(tmp_workspace, "fake_muninn", "packs")
-        venvs_dir = os.path.join(tmp_workspace, "fake_muninn", "venvs")
-        os.makedirs(packs_dir, exist_ok=True)
-        os.makedirs(venvs_dir, exist_ok=True)
+        def flaky_replace(source, destination):
+            nonlocal replace_count
+            replace_count += 1
+            if replace_count == 2:
+                raise OSError("simulated commit failure")
+            return real_replace(source, destination)
 
-        m = PackageManager()
-        monkeypatch.setattr(m, "packs_dir", packs_dir)
+        monkeypatch.setattr(os, "replace", flaky_replace)
+        try:
+            with pytest.raises(OSError, match="simulated commit failure"):
+                staged.commit()
+        finally:
+            staged.cleanup()
 
-        # Mock _get_pack_venv_dir to use our test venvs_dir
+        installed = PackManifest.from_path(
+            Path(manager.packs_dir) / "transaction" / "manifest.json"
+        )
+        assert installed.version == "1.0.0"
 
-        def mock_get_venv(pack_id):
-            return os.path.join(venvs_dir, pack_id)
 
-        monkeypatch.setattr(m, "_get_pack_venv_dir", mock_get_venv)
+class TestSourceResolution:
+    def test_resolves_github_and_local_sources(self, tmp_path):
+        resolver = PackSourceResolver()
 
-        # Install the pack (this will create the venv if requirements.txt exists)
-        m.install_pack(src)
+        remote = resolver.resolve("user/repo@dev")
+        assert remote.kind == "remote-zip"
+        assert remote.location.endswith("/dev.zip")
+        assert remote.source_info == "github:user/repo@dev"
 
-        # Verify venv was created
-        venv_dir = os.path.join(venvs_dir, "packwithvenv")
-        assert os.path.isdir(venv_dir), "venv should exist after install"
-
-        # Uninstall the pack
-        m.uninstall_pack("packwithvenv")
-
-        # Verify both pack_dir and venv_dir are removed
-        assert not os.path.exists(os.path.join(packs_dir, "packwithvenv"))
-        assert not os.path.exists(venv_dir), "venv should be removed after uninstall"
+        local = tmp_path / "pack"
+        _write_pack(local)
+        resolved_local = resolver.resolve(str(local))
+        assert resolved_local.kind == "local-directory"
+        assert resolved_local.source_info == f"local:{local.resolve()}"
 
 
 class TestUpgrade:
-    def test_upgrade_no_source_skips(self, monkeypatch, tmp_workspace):
-        """Pack without source field → skip."""
-        packs_dir = os.path.join(tmp_workspace, "packs")
-        os.makedirs(packs_dir, exist_ok=True)
-        m = PackageManager()
-        monkeypatch.setattr(m, "packs_dir", packs_dir)
+    def test_upgrade_local_newer_version(self, manager, tmp_path):
+        source = tmp_path / "source"
+        _write_pack(source, "p1", "1.0.0")
+        manager.install_pack(str(source))
 
-        # Manually craft an installed pack without a source field
-        pack_dir = os.path.join(packs_dir, "noid")
-        _make_minimal_pack(pack_dir, "noid", "1.0.0")
-        # Remove source key
-        with open(os.path.join(pack_dir, "manifest.json"), "r+") as f:
-            manifest = json.load(f)
-            manifest.pop("source", None)
-            f.seek(0)
-            json.dump(manifest, f, indent=4)
-            f.truncate()
+        _write_pack(source, "p1", "2.0.0")
+        assert manager.upgrade_pack("p1") is True
 
-        result = m.upgrade_pack("noid")
-        assert result is False
+        manifest = json.loads(
+            (Path(manager.packs_dir) / "p1" / "manifest.json").read_text()
+        )
+        assert manifest["version"] == "2.0.0"
 
-    def test_upgrade_local_newer_version(self, monkeypatch, tmp_workspace):
-        """Local source with a newer version → upgrade performed."""
-        source_dir = os.path.join(tmp_workspace, "source")
-        _make_minimal_pack(source_dir, "p1", "1.0.0")
+    def test_upgrade_missing_source_returns_failure(self, manager, tmp_path):
+        source = tmp_path / "source"
+        _write_pack(source, "p2", "1.0.0")
+        manager.install_pack(str(source))
+        source.rename(tmp_path / "moved")
 
-        packs_dir = os.path.join(tmp_workspace, "packs")
-        os.makedirs(packs_dir, exist_ok=True)
-        m = PackageManager()
-        monkeypatch.setattr(m, "packs_dir", packs_dir)
+        result = manager.upgrade_pack_result("p2")
+        assert result.status == "failed"
 
-        # Install v1.0.0 from the source dir
-        m.install_pack(source_dir)
+    def test_upgrade_no_source_is_skipped(self, manager):
+        pack_dir = Path(manager.packs_dir) / "nosource" / "manifest.json"
+        pack_dir.parent.mkdir(parents=True)
+        pack_dir.write_text(
+            json.dumps(
+                {
+                    "id": "nosource",
+                    "name": "No Source",
+                    "version": "1.0.0",
+                }
+            )
+        )
 
-        # Bump the source dir to v2.0.0
-        with open(os.path.join(source_dir, "manifest.json"), "w") as f:
-            manifest = {
-                "id": "p1",
-                "name": "p1 Name",
-                "author": "Tester",
-                "version": "2.0.0",
-                "description": "Test pack",
-            }
-            json.dump(manifest, f, indent=4)
+        result = manager.upgrade_pack_result("nosource")
+        assert result.status == "skipped"
 
-        # Read the installed manifest, bump source to v2.0.0
-        source_path = os.path.join(packs_dir, "p1", "manifest.json")
-        with open(source_path) as f:
-            installed = json.load(f)
-        assert installed["source"] == f"local:{os.path.abspath(source_dir)}"
-
-        # Now the source dir has v2.0.0 → upgrade should trigger
-        assert m.upgrade_pack("p1") is True
-
-        # Verify installed version is now 2.0.0
-        with open(source_path) as f:
-            upgraded = json.load(f)
-        assert upgraded["version"] == "2.0.0"
-
-    def test_upgrade_local_missing_path(self, monkeypatch, tmp_workspace):
-        """Local source path no longer exists → skipped gracefully."""
-        source_dir = os.path.join(tmp_workspace, "srcdir")
-        _make_minimal_pack(source_dir, "p2", "1.0.0")
-
-        packs_dir = os.path.join(tmp_workspace, "packs")
-        os.makedirs(packs_dir, exist_ok=True)
-        m = PackageManager()
-        monkeypatch.setattr(m, "packs_dir", packs_dir)
-
-        m.install_pack(source_dir)
-
-        # Now delete the source directory
-        shutil.rmtree(source_dir)
-
-        result = m.upgrade_pack("p2")
-        assert result is False
-
-    def test_upgrade_already_current(self, monkeypatch, tmp_workspace):
-        """Same version → no upgrade."""
-        source_dir = os.path.join(tmp_workspace, "srcdir")
-        _make_minimal_pack(source_dir, "p3", "1.0.0")
-
-        packs_dir = os.path.join(tmp_workspace, "packs")
-        os.makedirs(packs_dir, exist_ok=True)
-        m = PackageManager()
-        monkeypatch.setattr(m, "packs_dir", packs_dir)
-
-        m.install_pack(source_dir)
-        assert m.upgrade_pack("p3") is False
-
-    def test_upgrade_nonexistent_pack(self, tmp_workspace, monkeypatch):
-        packs_dir = os.path.join(tmp_workspace, "packs")
-        os.makedirs(packs_dir, exist_ok=True)
-        m = PackageManager()
-        monkeypatch.setattr(m, "packs_dir", packs_dir)
+    def test_nonexistent_pack_raises(self, manager):
         with pytest.raises(FileNotFoundError):
-            m.upgrade_pack("ghost")
+            manager.upgrade_pack("ghost")
 
 
-class TestLoadPlugin:
-    def test_loads_valid_plugin(self, tmp_workspace, monkeypatch):
-        src = os.path.join(tmp_workspace, "mypack")
-        _make_minimal_pack(src, pack_id="mypack")
-        packs_dir = os.path.join(tmp_workspace, "fake_muninn", "packs")
-        os.makedirs(packs_dir, exist_ok=True)
-        m = PackageManager()
-        monkeypatch.setattr(m, "packs_dir", packs_dir)
-        m.install_pack(src)
+class TestListingAndLoading:
+    def test_lists_installed_packs_and_keeps_invalid_entries(
+        self,
+        manager,
+    ):
+        source = Path(manager.packs_dir) / "source"
+        _write_pack(source, "valid")
+        manager.install_pack(str(source))
 
-        plugin = m.load_plugin("mypack")
-        assert plugin.get_all_problem_ids() == ["1", "2"]
-        assert plugin.render_statement("1") == "Q1"
-        assert plugin.check_answer("1", "1")
-        assert not plugin.check_answer("1", "wrong")
+        invalid = Path(manager.packs_dir) / "invalid"
+        invalid.mkdir()
+        (invalid / "manifest.json").write_text("{")
 
-    def test_raises_for_nonexistent_pack(self):
-        m = PackageManager()
-        with pytest.raises(FileNotFoundError):
-            m.load_plugin("nonexistent-pack")
+        summaries = manager.list_pack_summaries()
+        assert {summary.pack_id for summary in summaries} == {"valid", "invalid"}
+        assert next(s for s in summaries if s.pack_id == "invalid").error
 
+    def test_load_plugin_returns_worker_configuration(self, manager, tmp_path):
+        source = tmp_path / "mypack"
+        _write_pack(source, "mypack")
+        manager.install_pack(str(source))
 
-class TestListPacks:
-    def test_lists_installed_packs(self, tmp_workspace, monkeypatch):
-        packs_dir = os.path.join(tmp_workspace, "fake_muninn", "packs")
-        os.makedirs(packs_dir, exist_ok=True)
-        m = PackageManager()
-        monkeypatch.setattr(m, "packs_dir", packs_dir)
+        loaded = manager.load_plugin("mypack")
+        assert loaded.pack_id == "mypack"
+        assert loaded.entrypoint == "plugin:Plugin"
 
-        src1 = os.path.join(tmp_workspace, "pack_a")
-        src2 = os.path.join(tmp_workspace, "pack_b")
-        _make_minimal_pack(src1, pack_id="pack_a")
-        _make_minimal_pack(src2, pack_id="pack_b")
-        m.install_pack(src1)
-        m.install_pack(src2)
+    def test_plugin_adapter_runs_in_isolated_worker(self, manager, tmp_path):
+        source = tmp_path / "mypack"
+        _write_pack(source, "mypack")
+        manager.install_pack(str(source))
+        loaded = manager.load_plugin("mypack")
 
-        packs = m.list_packs()
-        ids = {p["id"] for p in packs}
-        assert ids == {"pack_a", "pack_b"}
+        async def exercise():
+            adapter = await manager.create_plugin_adapter(loaded)
+            try:
+                assert await adapter.get_all_problem_ids() == ["1", "2"]
+                assert await adapter.render_statement("1") == "Q1"
+                assert await adapter.check_answer("1", "1")
+            finally:
+                await adapter.aclose()
 
-    def test_skips_malformed_manifests(self, tmp_workspace, monkeypatch):
-        packs_dir = os.path.join(tmp_workspace, "packs")
-        os.makedirs(packs_dir)
-        m = PackageManager()
-        monkeypatch.setattr(m, "packs_dir", packs_dir)
+        asyncio.run(exercise())
 
-        invalid_json = os.path.join(packs_dir, "invalid-json")
-        os.makedirs(invalid_json)
-        with open(os.path.join(invalid_json, "manifest.json"), "w") as f:
-            f.write("{")
-
-        invalid_shape = os.path.join(packs_dir, "invalid-shape")
-        os.makedirs(invalid_shape)
-        with open(os.path.join(invalid_shape, "manifest.json"), "w") as f:
-            json.dump(["not", "an", "object"], f)
-
-        missing_id = os.path.join(packs_dir, "missing-id")
-        os.makedirs(missing_id)
-        with open(os.path.join(missing_id, "manifest.json"), "w") as f:
-            json.dump({"name": "Missing ID"}, f)
-
-        valid = os.path.join(packs_dir, "valid")
-        os.makedirs(valid)
-        with open(os.path.join(valid, "manifest.json"), "w") as f:
-            json.dump({"id": "valid", "name": "Valid"}, f)
-
-        events = []
-        packs = m.list_packs(progress=events.append)
-
-        assert [pack["id"] for pack in packs] == ["valid"]
-        assert len(events) == 3
-        assert all("Skipping invalid manifest" in event.message for event in events)
+    def test_plugin_workers_isolate_same_named_local_modules(
+        self,
+        manager,
+        tmp_path,
+    ):
+        for pack_id, value in (("pack-a", "A"), ("pack-b", "B")):
+            source = tmp_path / pack_id
+            _write_pack(source, pack_id)
+            (source / "shared_dep.py").write_text(
+                f"VALUE = {value!r}\n",
+                encoding="utf-8",
+            )
+            (source / "plugin.py").write_text(
+                """from muninn.plugin_api import BaseTrainingPlugin
 
 
-class TestVersion:
-    def test_version_tuple(self):
-        assert PackageManager._version_tuple("1.2.3") == (1, 2, 3)
+class Plugin(BaseTrainingPlugin):
+    def load_data(self):
+        self.ids = ["1"]
 
-    def test_is_newer(self):
-        assert PackageManager._is_newer("2.0.0", "1.0.0")
+    def get_all_problem_ids(self):
+        return self.ids
+
+    def render_statement(self, problem_id):
+        import shared_dep
+        return shared_dep.VALUE
+
+    def check_answer(self, problem_id, user_input):
+        return True
+
+    def get_expected_display(self, problem_id):
+        return "A"
+""",
+                encoding="utf-8",
+            )
+            manager.install_pack(str(source))
+
+        async def exercise():
+            adapters = []
+            try:
+                for pack_id in ("pack-a", "pack-b"):
+                    loaded = manager.load_plugin(pack_id)
+                    adapters.append(await manager.create_plugin_adapter(loaded))
+                values = [await adapter.render_statement("1") for adapter in adapters]
+                assert values == ["A", "B"]
+            finally:
+                for adapter in adapters:
+                    await adapter.aclose()
+
+        asyncio.run(exercise())
+
+
+class TestVersionAndValidation:
+    def test_version_comparison_is_semver_aware(self):
+        assert PackageManager._is_newer("1.0.0", "1.0.0-beta")
+        assert PackageManager._is_newer("2.0.0", "1.9.9")
         assert not PackageManager._is_newer("1.0.0", "1.0.0")
-        assert not PackageManager._is_newer("0.9.0", "1.0.0")
-        assert PackageManager._is_newer("1.0.1", "1.0.0")
-        assert PackageManager._is_newer("1.1.0", "1.0.9")
 
-    def test_version_tuple_corner_cases(self):
-        # Prefix handling
-        assert PackageManager._version_tuple("v1.0.0") == (1, 0, 0)
-        assert PackageManager._version_tuple("V2.1.3") == (2, 1, 3)
-        # Suffix handling
-        assert PackageManager._version_tuple("1.0.0-beta") == (1, 0, 0)
-        assert PackageManager._version_tuple("1.2.3.alpha4") == (1, 2, 3)
-        # Short versions
-        assert PackageManager._version_tuple("1.0") == (1, 0, 0)
-        assert PackageManager._version_tuple("2") == (2, 0, 0)
-        # Invalid / unexpected formats gracefully falling back
-        assert PackageManager._version_tuple("v.1.0") == (0, 0, 0)
-        assert PackageManager._version_tuple("version-1.0") == (0, 0, 0)
-        assert PackageManager._version_tuple("1.b.c") == (1, 0, 0)
+    @pytest.mark.parametrize(
+        "pack_id",
+        ["my-pack", "my_pack", "my.pack", "MyPack123", "pack-1.0.0"],
+    )
+    def test_valid_pack_ids(self, manager, pack_id):
+        manager._validate_pack_id(pack_id)
 
+    @pytest.mark.parametrize(
+        "pack_id",
+        ["", ".", "..", "../bad", "path/to", "path\\to", "bad name", "bad$id"],
+    )
+    def test_invalid_pack_ids(self, manager, pack_id):
+        with pytest.raises(ValueError):
+            manager._validate_pack_id(pack_id)
 
-class TestPackIdValidation:
-    def test_valid_pack_ids(self):
-        """Test that valid pack_ids are accepted."""
-        m = PackageManager()
-        # These should not raise
-        m._validate_pack_id("my-pack")
-        m._validate_pack_id("my_pack")
-        m._validate_pack_id("my.pack")
-        m._validate_pack_id("MyPack123")
-        m._validate_pack_id("pack-1.0.0")
-        m._validate_pack_id("pack_with_underscores")
-
-    def test_rejects_path_traversal(self):
-        """Test that path traversal attempts are rejected."""
-        m = PackageManager()
-        with pytest.raises(ValueError, match="not allowed"):
-            m._validate_pack_id("..")
-        with pytest.raises(ValueError, match="not allowed"):
-            m._validate_pack_id(".")
-
-    def test_rejects_path_separators(self):
-        """Test that pack_ids with path separators are rejected."""
-        m = PackageManager()
-        with pytest.raises(ValueError, match="path separators"):
-            m._validate_pack_id("../malicious")
-        with pytest.raises(ValueError, match="path separators"):
-            m._validate_pack_id("path/to/pack")
-        with pytest.raises(ValueError, match="path separators"):
-            m._validate_pack_id("path\\to\\pack")
-
-    def test_rejects_invalid_characters(self):
-        """Test that pack_ids with invalid characters are rejected."""
-        m = PackageManager()
-        with pytest.raises(ValueError, match="alphanumeric"):
-            m._validate_pack_id("pack with spaces")
-        with pytest.raises(ValueError, match="alphanumeric"):
-            m._validate_pack_id("pack@version")
-        with pytest.raises(ValueError, match="alphanumeric"):
-            m._validate_pack_id("pack$name")
-
-    def test_rejects_empty_pack_id(self):
-        """Test that empty pack_id is rejected."""
-        m = PackageManager()
-        with pytest.raises(ValueError, match="cannot be empty"):
-            m._validate_pack_id("")
-
-    def test_uninstall_validates_pack_id(self, tmp_workspace, monkeypatch):
-        """Test that uninstall_pack validates pack_id."""
-        packs_dir = os.path.join(tmp_workspace, "packs")
-        os.makedirs(packs_dir, exist_ok=True)
-        m = PackageManager()
-        monkeypatch.setattr(m, "packs_dir", packs_dir)
-        with pytest.raises(ValueError, match="path separators"):
-            m.uninstall_pack("../malicious")
-
-    def test_load_plugin_validates_pack_id(self):
-        """Test that load_plugin validates pack_id."""
-        m = PackageManager()
-        with pytest.raises(ValueError, match="path separators"):
-            m.load_plugin("../malicious")
-
-    def test_upgrade_pack_validates_pack_id(self):
-        """Test that upgrade_pack validates pack_id."""
-        m = PackageManager()
-        with pytest.raises(ValueError, match="path separators"):
-            m.upgrade_pack("../malicious")
-
-    def test_install_rejects_malicious_manifest(self, tmp_workspace, monkeypatch):
-        """Test that install_pack rejects packs with malicious pack_id in manifest."""
-        src = os.path.join(tmp_workspace, "malicious")
-        os.makedirs(src, exist_ok=True)
-        # Create manifest with path traversal in id
-        manifest = {
-            "id": "../escape",
-            "name": "Malicious Pack",
-            "author": "Attacker",
-            "version": "1.0.0",
-            "description": "Malicious pack",
-        }
-        with open(os.path.join(src, "manifest.json"), "w", encoding="utf-8") as f:
-            json.dump(manifest, f, indent=4)
-
-        packs_dir = os.path.join(tmp_workspace, "fake_muninn", "packs")
-        os.makedirs(packs_dir, exist_ok=True)
-        m = PackageManager()
-        monkeypatch.setattr(m, "packs_dir", packs_dir)
-
+    def test_install_rejects_invalid_manifest(self, manager, tmp_path):
+        source = tmp_path / "bad"
+        source.mkdir()
+        (source / "manifest.json").write_text(
+            json.dumps(
+                {
+                    "id": "../escape",
+                    "name": "Bad",
+                    "version": "1.0.0",
+                }
+            )
+        )
         with pytest.raises(ValueError, match="Invalid manifest"):
-            m.install_pack(src)
-
-
-class TestLoadPluginCornerCases:
-    def test_raises_if_no_valid_subclass(self, tmp_workspace, monkeypatch):
-        src = os.path.join(tmp_workspace, "badpack")
-        os.makedirs(src, exist_ok=True)
-        manifest = {"id": "badpack", "version": "1.0.0"}
-        with open(os.path.join(src, "manifest.json"), "w") as f:
-            json.dump(manifest, f)
-
-        # Plugin that doesn't subclass BaseRecitePlugin
-        with open(os.path.join(src, "plugin.py"), "w") as f:
-            f.write("class Plugin:\n    pass\n")
-
-        packs_dir = os.path.join(tmp_workspace, "fake_muninn", "packs")
-        os.makedirs(packs_dir, exist_ok=True)
-        m = PackageManager()
-        monkeypatch.setattr(m, "packs_dir", packs_dir)
-        m.install_pack(src)
-
-        with pytest.raises(
-            ValueError, match="No valid BaseRecitePlugin subclass found"
-        ):
-            m.load_plugin("badpack")
+            manager.install_pack(str(source))

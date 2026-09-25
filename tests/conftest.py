@@ -7,6 +7,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from muninn.domain import ProblemStats
+
 
 @pytest.fixture
 def tmp_workspace():
@@ -72,6 +74,11 @@ def mock_state_manager():
         "total_count": 5,
         "total_ac_time": 10.0,
     }
+    mock.get_problem_stats.return_value = ProblemStats(
+        ac_count=2,
+        total_count=5,
+        total_ac_time=10.0,
+    )
     return mock
 
 

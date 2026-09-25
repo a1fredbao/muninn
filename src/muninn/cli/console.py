@@ -8,6 +8,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
+from ..services.manifest import PackSummary
 from ..services.package_manager import PackageProgress, UpgradeResult
 
 
@@ -28,7 +29,7 @@ class ConsolePresenter:
     def error(self, message: str) -> None:
         self.stderr.print(f"[red]Error:[/red] {escape(message)}")
 
-    def packs(self, packs: list[dict]) -> None:
+    def packs(self, packs: list[dict] | list[PackSummary]) -> None:
         if not packs:
             self.stdout.print("No packs installed yet. Use 'muninn install <source>'.")
             return
@@ -40,14 +41,30 @@ class ConsolePresenter:
         table.add_column("Author")
         table.add_column("Description")
 
-        for pack in sorted(packs, key=lambda item: str(item.get("id", ""))):
-            table.add_row(
-                escape(str(pack.get("id", ""))),
-                escape(str(pack.get("name", ""))),
-                escape(str(pack.get("version", ""))),
-                escape(str(pack.get("author") or "")),
-                escape(str(pack.get("description") or "")),
-            )
+        for pack in sorted(
+            packs,
+            key=lambda item: (
+                item.pack_id
+                if isinstance(item, PackSummary)
+                else str(item.get("id", ""))
+            ),
+        ):
+            if isinstance(pack, PackSummary):
+                table.add_row(
+                    escape(pack.pack_id),
+                    escape(pack.name if pack.valid else "Invalid pack"),
+                    escape(pack.version),
+                    escape(pack.author),
+                    escape(pack.error or pack.description),
+                )
+            else:
+                table.add_row(
+                    escape(str(pack.get("id", ""))),
+                    escape(str(pack.get("name", ""))),
+                    escape(str(pack.get("version", ""))),
+                    escape(str(pack.get("author") or "")),
+                    escape(str(pack.get("description") or "")),
+                )
         self.stdout.print(table)
 
     def upgrade_results(self, results: dict[str, UpgradeResult]) -> None:

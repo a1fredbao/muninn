@@ -1,4 +1,4 @@
-"""Interactive reciting session screen."""
+"""Interactive training session screen."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ from textual.containers import Container, Vertical
 from textual.screen import Screen
 from textual.widgets import Footer, Header, LoadingIndicator, Static, TextArea
 
-from ...services.study_session import StudySession
+from ...services.training_session import TrainingSession
 from .dialogs import JudgeErrorDialog, SessionSummaryDialog
 
 
@@ -40,7 +40,7 @@ class SessionScreen(Screen[None]):
         ),
     ]
 
-    def __init__(self, session: StudySession) -> None:
+    def __init__(self, session: TrainingSession) -> None:
         super().__init__()
         self.session = session
         self.phase = "idle"
@@ -67,9 +67,17 @@ class SessionScreen(Screen[None]):
 
     def on_mount(self) -> None:
         self.query_one("#judging", LoadingIndicator).display = False
-        self._advance()
+        self._start_advance()
 
-    def _advance(self) -> None:
+    def _start_advance(self) -> None:
+        self.run_worker(
+            self._advance(),
+            name="advance",
+            group="advance",
+            exclusive=True,
+        )
+
+    async def _advance(self) -> None:
         self.problem_id = self.session.next_problem()
         self._pending_quit = False
         self._pending_leave = False
@@ -82,20 +90,27 @@ class SessionScreen(Screen[None]):
         feedback.update("")
         judging.display = False
 
-        if self.problem_id is None:
+        statement: str | None = None
+        while self.problem_id is not None and statement is None:
+            try:
+                statement = await self.session.render_statement(self.problem_id)
+            except Exception as exc:  # noqa: BLE001
+                action = await self.app.push_screen_wait(JudgeErrorDialog(exc))
+                if action == "retry":
+                    continue
+                if action == "skip":
+                    self.session.skip_problem(self.problem_id)
+                    self.problem_id = self.session.next_problem()
+                    continue
+                should_end = await self._open_summary()
+                if should_end:
+                    return
+
+        if self.problem_id is None or statement is None:
             self.phase = "empty"
             question.update("This pack has no problems.")
             answer.disabled = True
             self._update_stats()
-            return
-
-        try:
-            statement = self.session.render_statement(self.problem_id)
-        except Exception as exc:  # noqa: BLE001
-            self.phase = "error"
-            question.update(Text(str(exc)))
-            answer.disabled = True
-            self.notify(str(exc), title="Unable to render problem", severity="error")
             return
 
         self.phase = "ready"
@@ -117,7 +132,7 @@ class SessionScreen(Screen[None]):
 
     def action_submit_answer(self) -> None:
         if self.phase == "feedback":
-            self._advance()
+            self._start_advance()
             return
         if self.phase != "ready" or self.problem_id is None:
             return
@@ -161,7 +176,7 @@ class SessionScreen(Screen[None]):
                 self.query_one("#judging", LoadingIndicator).display = False
                 if action == "skip":
                     self.session.skip_problem(problem_id)
-                    self._advance()
+                    await self._advance()
                     self._resolve_pending_navigation()
                     return
                 should_end = await self._open_summary()
@@ -171,11 +186,11 @@ class SessionScreen(Screen[None]):
 
         self.phase = "feedback"
         self.query_one("#judging", LoadingIndicator).display = False
-        self._show_feedback(problem_id, is_correct, elapsed)
+        await self._show_feedback(problem_id, is_correct, elapsed)
         self._update_stats()
         self._resolve_pending_navigation()
 
-    def _show_feedback(
+    async def _show_feedback(
         self,
         problem_id: str,
         is_correct: bool,
@@ -183,12 +198,12 @@ class SessionScreen(Screen[None]):
     ) -> None:
         feedback = self.query_one("#feedback", Static)
         if is_correct:
-            expansion = self.session.expansion(problem_id)
+            expansion = await self.session.expansion(problem_id)
             message = f"[green]Accepted[/green]  {elapsed:.2f}s"
             if expansion:
                 message += f"\nExpansion: {escape(expansion)}"
         else:
-            expected = self.session.expected_answer(problem_id)
+            expected = await self.session.expected_answer(problem_id)
             message = (
                 "[red]Wrong answer[/red]\n"
                 f"Expected: [yellow]{escape(expected)}[/yellow]"
@@ -210,8 +225,7 @@ class SessionScreen(Screen[None]):
     def action_leave(self) -> None:
         if self.phase == "judging":
             self._pending_leave = True
-            if self.session.async_judge:
-                self._cancel_judge_workers()
+            self._cancel_judge_workers()
             self.query_one("#feedback", Static).update(
                 "Waiting for the current judgment to finish..."
             )
@@ -223,8 +237,7 @@ class SessionScreen(Screen[None]):
             return
         if self.phase == "judging":
             self._pending_quit = True
-            if self.session.async_judge:
-                self._cancel_judge_workers()
+            self._cancel_judge_workers()
             self.query_one("#feedback", Static).update(
                 "Waiting for the current judgment to finish..."
             )
@@ -269,4 +282,4 @@ class SessionScreen(Screen[None]):
         return should_end
 
     def on_unmount(self) -> None:
-        self.session.close()
+        asyncio.create_task(self.session.aclose())

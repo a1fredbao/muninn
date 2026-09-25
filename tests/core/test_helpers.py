@@ -7,12 +7,25 @@ from typing import ClassVar
 
 import pytest
 
-from src.core.helpers import (
+from muninn.core.helpers import (
     DataPlugin,
     FlashcardPlugin,
     Matchers,
     QuestionType,
 )
+from muninn.plugin_api import PluginContext
+
+
+def _initialize(plugin, workspace_dir):
+    plugin.initialize(
+        PluginContext(
+            pack_id="test",
+            pack_dir=workspace_dir,
+            workspace_dir=workspace_dir,
+        )
+    )
+    return plugin
+
 
 # -----------------------------------------------------------------------
 # Matchers
@@ -149,8 +162,8 @@ class _SimpleDataPlugin(DataPlugin):
 
     def load_records(self):
         return [
-            {"q": "Q1", "a": "A1"},
-            {"q": "Q2", "a": "A2"},
+            {"id": "q1", "q": "Q1", "a": "A1"},
+            {"id": "q2", "q": "Q2", "a": "A2"},
         ]
 
 
@@ -165,7 +178,11 @@ class _FilteredDataPlugin(DataPlugin):
     ]
 
     def load_records(self):
-        return [{"v": "a"}, {"v": "b"}, {"v": "c"}]
+        return [
+            {"id": "a", "v": "a"},
+            {"id": "b", "v": "b"},
+            {"id": "c", "v": "c"},
+        ]
 
     def filter(self, record, q_type):
         return record["v"] != "b"
@@ -173,45 +190,52 @@ class _FilteredDataPlugin(DataPlugin):
 
 class TestDataPlugin:
     def test_get_all_problem_ids(self, tmp_workspace):
-        p = _SimpleDataPlugin(tmp_workspace)
+        p = _initialize(_SimpleDataPlugin(tmp_workspace), tmp_workspace)
         ids = p.get_all_problem_ids()
         assert len(ids) == 2
-        assert "0__typeA" in ids
-        assert "1__typeA" in ids
+        assert "q1::typeA" in ids
+        assert "q2::typeA" in ids
 
     def test_render_statement(self, tmp_workspace):
-        p = _SimpleDataPlugin(tmp_workspace)
-        assert "Q1" in p.render_statement("0__typeA")
-        assert "【typeA】" in p.render_statement("0__typeA")
+        p = _initialize(_SimpleDataPlugin(tmp_workspace), tmp_workspace)
+        assert "Q1" in p.render_statement("q1::typeA")
+        assert "【typeA】" in p.render_statement("q1::typeA")
 
     def test_check_answer_correct(self, tmp_workspace):
-        p = _SimpleDataPlugin(tmp_workspace)
-        assert p.check_answer("0__typeA", "A1")
+        p = _initialize(_SimpleDataPlugin(tmp_workspace), tmp_workspace)
+        assert p.check_answer("q1::typeA", "A1")
 
     def test_check_answer_wrong(self, tmp_workspace):
-        p = _SimpleDataPlugin(tmp_workspace)
-        assert not p.check_answer("0__typeA", "wrong")
+        p = _initialize(_SimpleDataPlugin(tmp_workspace), tmp_workspace)
+        assert not p.check_answer("q1::typeA", "wrong")
 
     def test_get_expected_display(self, tmp_workspace):
-        p = _SimpleDataPlugin(tmp_workspace)
-        assert p.get_expected_display("0__typeA") == "A1"
+        p = _initialize(_SimpleDataPlugin(tmp_workspace), tmp_workspace)
+        assert p.get_expected_display("q1::typeA") == "A1"
 
     def test_expand_info_default_empty(self, tmp_workspace):
-        p = _SimpleDataPlugin(tmp_workspace)
-        assert p.get_expand_info("0__typeA") == ""
+        p = _initialize(_SimpleDataPlugin(tmp_workspace), tmp_workspace)
+        assert p.get_expand_info("q1::typeA") == ""
 
     def test_resolve(self, tmp_workspace):
-        p = _SimpleDataPlugin(tmp_workspace)
-        record, qt = p._resolve("0__typeA")
-        assert record == {"q": "Q1", "a": "A1"}
+        p = _initialize(_SimpleDataPlugin(tmp_workspace), tmp_workspace)
+        record, qt = p._resolve("q1::typeA")
+        assert record == {"id": "q1", "q": "Q1", "a": "A1"}
         assert qt.label == "typeA"
 
     def test_filter_excludes_records(self, tmp_workspace):
-        p = _FilteredDataPlugin(tmp_workspace)
+        p = _initialize(_FilteredDataPlugin(tmp_workspace), tmp_workspace)
         ids = p.get_all_problem_ids()
         assert len(ids) == 2
         records = {p._resolve(pid)[0]["v"] for pid in ids}
         assert records == {"a", "c"}
+
+    def test_legacy_id_migration_map(self, tmp_workspace):
+        p = _initialize(_SimpleDataPlugin(tmp_workspace), tmp_workspace)
+        assert p.get_legacy_problem_id_map() == {
+            "0__typeA": "q1::typeA",
+            "1__typeA": "q2::typeA",
+        }
 
 
 # -----------------------------------------------------------------------
@@ -232,42 +256,42 @@ class TestFlashcardPlugin:
         csv_path = os.path.join(tmp_workspace, "words.csv")
         with open(csv_path, "w", encoding="utf-8", newline="") as f:
             w = csv.writer(f)
-            w.writerow(["front", "back"])
-            w.writerow(["apple", "苹果"])
-            w.writerow(["dog", "狗"])
+            w.writerow(["id", "front", "back"])
+            w.writerow(["apple", "apple", "苹果"])
+            w.writerow(["dog", "dog", "狗"])
 
-        p = _GreFlashcard(tmp_workspace)
+        p = _initialize(_GreFlashcard(tmp_workspace), tmp_workspace)
         ids = p.get_all_problem_ids()
         assert len(ids) == 2
-        assert p.render_statement("0") == "【闪卡】 apple"
-        assert p.get_expected_display("0") == "苹果"
-        assert p.check_answer("0", "苹果")
+        assert p.render_statement("apple") == "【闪卡】 apple"
+        assert p.get_expected_display("apple") == "苹果"
+        assert p.check_answer("apple", "苹果")
 
     def test_json_loading(self, tmp_workspace):
         json_path = os.path.join(tmp_workspace, "words.json")
         with open(json_path, "w", encoding="utf-8") as f:
             json.dump(
                 [
-                    {"front": "cat", "back": "猫"},
-                    {"front": "bird", "back": "鸟"},
+                    {"id": "cat", "front": "cat", "back": "猫"},
+                    {"id": "bird", "front": "bird", "back": "鸟"},
                 ],
                 f,
             )
 
-        p = _JsonFlashcard(tmp_workspace)
+        p = _initialize(_JsonFlashcard(tmp_workspace), tmp_workspace)
         ids = p.get_all_problem_ids()
         assert len(ids) == 2
-        assert p.render_statement("1") == "【闪卡】 bird"
+        assert p.render_statement("bird") == "【闪卡】 bird"
 
     def test_rejects_wrong_answer(self, tmp_workspace):
         csv_path = os.path.join(tmp_workspace, "words.csv")
         with open(csv_path, "w", encoding="utf-8", newline="") as f:
             w = csv.writer(f)
-            w.writerow(["front", "back"])
-            w.writerow(["hello", "world"])
+            w.writerow(["id", "front", "back"])
+            w.writerow(["hello", "hello", "world"])
 
-        p = _GreFlashcard(tmp_workspace)
-        assert not p.check_answer("0", "wrong")
+        p = _initialize(_GreFlashcard(tmp_workspace), tmp_workspace)
+        assert not p.check_answer("hello", "wrong")
 
     def test_unsupported_format_raises(self, tmp_workspace):
         class BadFlashcard(FlashcardPlugin):
@@ -277,21 +301,21 @@ class TestFlashcardPlugin:
             f.write("hello")
 
         with pytest.raises(ValueError, match="Unsupported DATA_FILE"):
-            BadFlashcard(tmp_workspace)
+            _initialize(BadFlashcard(tmp_workspace), tmp_workspace)
 
     def test_missing_back_key_raises_keyerror(self, tmp_workspace):
         json_path = os.path.join(tmp_workspace, "words.json")
         with open(json_path, "w", encoding="utf-8") as f:
-            json.dump([{"front": "cat"}], f)  # Missing "back"
+            json.dump([{"id": "cat", "front": "cat"}], f)  # Missing "back"
 
-        p = _JsonFlashcard(tmp_workspace)
+        p = _initialize(_JsonFlashcard(tmp_workspace), tmp_workspace)
         # render_statement and get_expected_display use .get("back", ""), so they won't raise
-        assert p.render_statement("0") == "【闪卡】 cat"
-        assert p.get_expected_display("0") == ""
+        assert p.render_statement("cat") == "【闪卡】 cat"
+        assert p.get_expected_display("cat") == ""
 
         # But check_answer uses Matchers.exact("back") which accesses data_item["back"] directly
         with pytest.raises(KeyError):
-            p.check_answer("0", "anything")
+            p.check_answer("cat", "anything")
 
 
 class TestMatchersCornerCases:

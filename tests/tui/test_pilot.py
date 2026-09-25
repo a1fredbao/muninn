@@ -2,38 +2,48 @@
 
 import asyncio
 import time
-from unittest.mock import MagicMock
+from pathlib import Path
 
 from textual.containers import Container
 from textual.widgets import DataTable, TextArea
 
-from src.core.base_plugin import BaseRecitePlugin
-from src.services.package_manager import PackageProgress
-from src.services.study_session import StudySession
-from src.tui.app import MuninnApp
-from src.tui.screens.dialogs import (
+from muninn.core.state import StateManager
+from muninn.plugin_api import BaseTrainingPlugin
+from muninn.services.manifest import PackManifest, PackSummary
+from muninn.services.operations import OperationResult
+from muninn.services.package_manager import PackageProgress
+from muninn.services.plugin_loader import (
+    InProcessPluginAdapter,
+    LoadedPlugin,
+)
+from muninn.services.training_session import TrainingSession
+from muninn.tui.app import MuninnApp
+from muninn.tui.screens.dialogs import (
     InstallDialog,
     JudgeErrorDialog,
     OperationDialog,
     SessionSummaryDialog,
 )
-from src.tui.screens.session import SessionScreen
+from muninn.tui.screens.session import SessionScreen
 
 
 class _PackageManager:
     def __init__(self):
         self.installed = []
 
-    def list_packs(self, progress=None):
+    def list_pack_summaries(self):
         return [
-            {
-                "id": "sample",
-                "name": "Sample Pack",
-                "version": "2.1.0",
-                "author": "Tester",
-                "description": "Metadata visible in the library.",
-                "source": "local:/tmp/sample",
-            }
+            PackSummary(
+                "sample",
+                PackManifest(
+                    id="sample",
+                    name="Sample Pack",
+                    version="2.1.0",
+                    author="Tester",
+                    description="Metadata visible in the library.",
+                    source="local:/tmp/sample",
+                ),
+            )
         ]
 
     def install_pack(self, source, progress=None, cancel_token=None):
@@ -42,8 +52,21 @@ class _PackageManager:
             progress(PackageProgress("Installed for test"))
         return "installed"
 
+    def install_pack_result(self, source, progress=None, cancel_token=None):
+        return OperationResult.success(
+            self.install_pack(source, progress, cancel_token)
+        )
 
-class _SlowPlugin(BaseRecitePlugin):
+    def uninstall_pack_result(
+        self,
+        pack_id,
+        progress=None,
+        cancel_token=None,
+    ):
+        return OperationResult.success(pack_id)
+
+
+class _SlowPlugin(BaseTrainingPlugin):
     def __init__(self):
         super().__init__("")
 
@@ -64,7 +87,7 @@ class _SlowPlugin(BaseRecitePlugin):
         return "1"
 
 
-class _CapturePlugin(BaseRecitePlugin):
+class _CapturePlugin(BaseTrainingPlugin):
     def __init__(self):
         self.received = []
         super().__init__("")
@@ -86,7 +109,7 @@ class _CapturePlugin(BaseRecitePlugin):
         return "1"
 
 
-class _FailingPlugin(BaseRecitePlugin):
+class _FailingPlugin(BaseTrainingPlugin):
     def __init__(self):
         super().__init__("")
 
@@ -106,14 +129,30 @@ class _FailingPlugin(BaseRecitePlugin):
         return "1"
 
 
-def _state_manager() -> MagicMock:
-    state = MagicMock()
-    state.get_stats.return_value = {
-        "ac_count": 0,
-        "total_count": 0,
-        "total_ac_time": 0.0,
-    }
-    return state
+class _RenderFailingPlugin(_FailingPlugin):
+    def render_statement(self, problem_id):
+        raise RuntimeError("render failed")
+
+
+async def _make_session(plugin: BaseTrainingPlugin, tmp_path: Path, pack_id: str):
+    pack_dir = tmp_path / pack_id
+    pack_dir.mkdir()
+    loaded = LoadedPlugin(
+        pack_id=pack_id,
+        pack_dir=pack_dir,
+        manifest=PackManifest(
+            id=pack_id,
+            name=pack_id,
+            version="1.0.0",
+            entrypoint="plugin:Plugin",
+            api_version="1",
+        ),
+        entrypoint="plugin:Plugin",
+        environment={},
+    )
+    adapter = InProcessPluginAdapter(loaded, plugin)
+    store = StateManager(pack_id, str(tmp_path / "states"))
+    return await TrainingSession.create(pack_id, adapter, store)
 
 
 def test_library_screen_shows_pack_metadata():
@@ -203,9 +242,9 @@ def test_ctrl_q_shows_notice_without_quitting():
     asyncio.run(exercise())
 
 
-def test_slow_sync_judging_does_not_block_pilot():
+def test_slow_sync_judging_does_not_block_pilot(tmp_path):
     async def exercise():
-        session = StudySession("slow", _SlowPlugin(), _state_manager())
+        session = await _make_session(_SlowPlugin(), tmp_path, "slow")
         app = MuninnApp(package_manager=_PackageManager())
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.pause()
@@ -231,10 +270,10 @@ def test_slow_sync_judging_does_not_block_pilot():
     asyncio.run(exercise())
 
 
-def test_multiline_answer_submits_on_enter():
+def test_multiline_answer_submits_on_enter(tmp_path):
     async def exercise():
         plugin = _CapturePlugin()
-        session = StudySession("multiline", plugin, _state_manager())
+        session = await _make_session(plugin, tmp_path, "multiline")
         app = MuninnApp(package_manager=_PackageManager())
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.pause()
@@ -261,9 +300,9 @@ def test_multiline_answer_submits_on_enter():
     asyncio.run(exercise())
 
 
-def test_continue_from_judge_error_restores_answer_input():
+def test_continue_from_judge_error_restores_answer_input(tmp_path):
     async def exercise():
-        session = StudySession("failing", _FailingPlugin(), _state_manager())
+        session = await _make_session(_FailingPlugin(), tmp_path, "failing")
         app = MuninnApp(package_manager=_PackageManager())
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.pause()
@@ -289,5 +328,30 @@ def test_continue_from_judge_error_restores_answer_input():
             assert app.screen is screen
             assert screen.phase == "ready"
             assert not screen.query_one("#answer", TextArea).disabled
+
+    asyncio.run(exercise())
+
+
+def test_render_error_can_skip_problem(tmp_path):
+    async def exercise():
+        session = await _make_session(
+            _RenderFailingPlugin(),
+            tmp_path,
+            "render-failing",
+        )
+        app = MuninnApp(package_manager=_PackageManager())
+        async with app.run_test(size=(100, 30)) as pilot:
+            await app.push_screen(SessionScreen(session))
+            for _ in range(50):
+                await pilot.pause(0.02)
+                if isinstance(app.screen, JudgeErrorDialog):
+                    break
+
+            assert isinstance(app.screen, JudgeErrorDialog)
+            await pilot.click("#skip")
+            await pilot.pause()
+
+            assert isinstance(app.screen, SessionScreen)
+            assert app.screen.phase == "empty"
 
     asyncio.run(exercise())

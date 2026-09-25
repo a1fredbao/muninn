@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from src.services.package_manager import (
+from muninn.services.package_manager import (
     CancellationToken,
     OperationCancelled,
     PackageManager,
@@ -28,13 +28,15 @@ def _make_pack(path: Path, pack_id: str, version: str = "1.0.0") -> None:
                 "author": "Tester",
                 "version": version,
                 "description": "Service test pack",
+                "entrypoint": "plugin:Plugin",
+                "api_version": "1",
             }
         ),
         encoding="utf-8",
     )
     (path / "plugin.py").write_text(
-        "from core.base_plugin import BaseRecitePlugin\n"
-        "class Plugin(BaseRecitePlugin):\n"
+        "from muninn.plugin_api import BaseTrainingPlugin\n"
+        "class Plugin(BaseTrainingPlugin):\n"
         "    def load_data(self): self.ids = ['1']\n"
         "    def get_all_problem_ids(self): return self.ids\n"
         "    def render_statement(self, pid): return pid\n"
@@ -47,9 +49,10 @@ def _make_pack(path: Path, pack_id: str, version: str = "1.0.0") -> None:
 def test_install_emits_progress_without_printing(tmp_path, capsys):
     source = tmp_path / "source"
     _make_pack(source, "progress-pack")
-    manager = PackageManager()
-    manager.packs_dir = str(tmp_path / "packs")
-    os.makedirs(manager.packs_dir)
+    manager = PackageManager(
+        packs_dir=str(tmp_path / "packs"),
+        venvs_dir=str(tmp_path / "venvs"),
+    )
 
     events = []
     pack_id = manager.install_pack(str(source), progress=events.append)
@@ -62,16 +65,25 @@ def test_install_emits_progress_without_printing(tmp_path, capsys):
 
 
 def test_upgrade_all_results_contains_per_pack_status(monkeypatch, tmp_path):
-    manager = PackageManager()
-    manager.packs_dir = str(tmp_path / "packs")
-    os.makedirs(manager.packs_dir)
-    monkeypatch.setattr(
-        manager,
-        "list_packs",
-        lambda progress=None: [{"id": "a"}, {"id": "b"}],
+    from muninn.services.manifest import PackManifest, PackSummary
+
+    manager = PackageManager(
+        packs_dir=str(tmp_path / "packs"),
+        venvs_dir=str(tmp_path / "venvs"),
     )
+    summaries = [
+        PackSummary(
+            "a",
+            PackManifest(id="a", name="a", version="1.0.0"),
+        ),
+        PackSummary(
+            "b",
+            PackManifest(id="b", name="b", version="1.0.0"),
+        ),
+    ]
+    monkeypatch.setattr(manager.installer, "list_summaries", lambda: summaries)
     monkeypatch.setattr(
-        manager,
+        manager.upgrades,
         "upgrade_pack_result",
         lambda pack_id, progress=None, cancel_token=None: UpgradeResult(
             pack_id=pack_id,
@@ -90,9 +102,10 @@ def test_upgrade_all_results_contains_per_pack_status(monkeypatch, tmp_path):
 def test_install_observes_cancellation_before_writing(tmp_path):
     source = tmp_path / "source"
     _make_pack(source, "cancelled-pack")
-    manager = PackageManager()
-    manager.packs_dir = str(tmp_path / "packs")
-    os.makedirs(manager.packs_dir)
+    manager = PackageManager(
+        packs_dir=str(tmp_path / "packs"),
+        venvs_dir=str(tmp_path / "venvs"),
+    )
     token = CancellationToken()
     token.cancel()
 
@@ -103,7 +116,10 @@ def test_install_observes_cancellation_before_writing(tmp_path):
 
 
 def test_subprocess_cancellation_terminates_running_process():
-    manager = PackageManager()
+    manager = PackageManager(
+        packs_dir="/tmp/muninn-test-packs",
+        venvs_dir="/tmp/muninn-test-venvs",
+    )
     token = CancellationToken()
     timer = threading.Timer(0.1, token.cancel)
     timer.start()
@@ -119,7 +135,10 @@ def test_subprocess_cancellation_terminates_running_process():
 
 
 def test_subprocess_drains_large_output_without_deadlock():
-    manager = PackageManager()
+    manager = PackageManager(
+        packs_dir="/tmp/muninn-test-packs",
+        venvs_dir="/tmp/muninn-test-venvs",
+    )
     result = manager._run_subprocess(
         [
             sys.executable,
@@ -135,7 +154,10 @@ def test_subprocess_drains_large_output_without_deadlock():
 
 
 def test_remote_manifest_fetch_observes_cancellation(monkeypatch):
-    manager = PackageManager()
+    manager = PackageManager(
+        packs_dir="/tmp/muninn-test-packs",
+        venvs_dir="/tmp/muninn-test-venvs",
+    )
     token = CancellationToken()
 
     def fake_urlopen(url, timeout):

@@ -16,7 +16,7 @@ def _package_version() -> str:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="muninn",
-        description="Muninn - The Extensible Reciting CLI",
+        description="Muninn - The Extensible Training CLI",
     )
     parser.add_argument(
         "-v",
@@ -65,7 +65,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser("list", help="List all installed packs")
 
-    parser_run = subparsers.add_parser("run", help="Run a reciting pack")
+    parser_run = subparsers.add_parser("run", help="Run a training pack")
     parser_run.add_argument("pack_id", help="The ID of the pack to run")
 
     return parser
