@@ -5,5 +5,5 @@
     "version": "1.0.0",
     "description": "GRE 高频核心词汇的正反面闪卡训练",
     "entrypoint": "plugin:Plugin",
-    "api_version": "1"
+    "api_version": "2"
 }

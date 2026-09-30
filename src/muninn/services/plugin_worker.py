@@ -66,29 +66,62 @@ def _run_maybe_async(result: Any) -> Any:
 
 
 def _dispatch(
-    plugin: plugin_api.Plugin,
+    question_types: dict[str, plugin_api.QuestionType],
     method: str,
     params: dict[str, Any],
 ) -> Any:
+    if method == "list_question_types":
+        return [
+            {
+                "key": question_type.key,
+                "label": question_type.label,
+                "description": question_type.description,
+                "problem_count": len(
+                    _run_maybe_async(question_type.get_all_problem_ids())
+                ),
+            }
+            for question_type in question_types.values()
+        ]
+
+    question_type = question_types.get(str(params["question_type"]))
+    if question_type is None:
+        raise ValueError(f"Unknown question type: {params['question_type']!r}")
+
     if method == "get_all_problem_ids":
-        result = _run_maybe_async(plugin.get_all_problem_ids())
+        result = _run_maybe_async(question_type.get_all_problem_ids())
         return [str(problem_id) for problem_id in result]
+    if method == "describe_problem":
+        result = _run_maybe_async(question_type.describe_problem(params["problem_id"]))
+        if result is None:
+            return None
+        if isinstance(result, dict):
+            return result
+        return {
+            "tags": list(result.tags),
+            "difficulty": result.difficulty,
+            "estimated_seconds": result.estimated_seconds,
+            "data": result.data,
+        }
     if method == "render_statement":
-        return str(_run_maybe_async(plugin.render_statement(params["problem_id"])))
+        return str(
+            _run_maybe_async(question_type.render_statement(params["problem_id"]))
+        )
     if method == "check_answer":
         return bool(
             _run_maybe_async(
-                plugin.check_answer(params["problem_id"], params["user_input"])
+                question_type.check_answer(
+                    params["problem_id"],
+                    params["user_input"],
+                )
             )
         )
     if method == "get_expected_display":
-        return str(_run_maybe_async(plugin.get_expected_display(params["problem_id"])))
+        return str(
+            _run_maybe_async(question_type.get_expected_display(params["problem_id"]))
+        )
     if method == "get_expand_info":
-        result = _run_maybe_async(plugin.get_expand_info(params["problem_id"]))
+        result = _run_maybe_async(question_type.get_expand_info(params["problem_id"]))
         return "" if result is None else str(result)
-    if method == "get_legacy_problem_id_map":
-        getter = getattr(plugin, "get_legacy_problem_id_map", None)
-        return _run_maybe_async(getter()) if getter is not None else {}
     raise ValueError(f"Unknown plugin method: {method}")
 
 
@@ -117,6 +150,11 @@ def main() -> None:
             pack_dir=args.pack_dir,
             entrypoint=args.entrypoint,
         )
+        loaded_question_types = _run_maybe_async(plugin.get_question_types())
+        question_types = {
+            str(question_type.key): question_type
+            for question_type in loaded_question_types
+        }
     except Exception as exc:
         payload = {
             "id": None,
@@ -136,7 +174,7 @@ def main() -> None:
             request_id = request.get("id")
             try:
                 result = _dispatch(
-                    plugin,
+                    question_types,
                     str(request["method"]),
                     dict(request.get("params") or {}),
                 )

@@ -29,7 +29,7 @@ def _make_pack(path: Path, pack_id: str, version: str = "1.0.0") -> None:
                 "version": version,
                 "description": "Service test pack",
                 "entrypoint": "plugin:Plugin",
-                "api_version": "1",
+                "api_version": "2",
             }
         ),
         encoding="utf-8",
@@ -85,7 +85,7 @@ def test_upgrade_all_results_contains_per_pack_status(monkeypatch, tmp_path):
     monkeypatch.setattr(
         manager.upgrades,
         "upgrade_pack_result",
-        lambda pack_id, progress=None, cancel_token=None: UpgradeResult(
+        lambda pack_id, progress=None, cancel_token=None, force=False: UpgradeResult(
             pack_id=pack_id,
             status="failed" if pack_id == "b" else "current",
             error="network" if pack_id == "b" else None,

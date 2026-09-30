@@ -7,14 +7,21 @@ import random
 from collections.abc import Callable
 from typing import Protocol
 
-from ..domain import ProblemId, ProblemStats
+from ..domain import (
+    ProblemId,
+    ProblemMetadata,
+    ProblemRef,
+    ProblemStats,
+    SchedulingCandidate,
+    SchedulingContext,
+)
 from .progress import ProgressStore
 
 
 class SchedulingPolicy(Protocol):
     """Compute a score where larger values are selected first."""
 
-    def score(self, problem_id: ProblemId, stats: ProblemStats) -> float: ...
+    def score(self, candidate: SchedulingCandidate) -> float: ...
 
 
 class WeightedTrainingPolicy:
@@ -35,8 +42,8 @@ class WeightedTrainingPolicy:
         self.max_attempt_weight = max_attempt_weight
         self.max_time_weight = max_time_weight
 
-    def score(self, problem_id: ProblemId, stats: ProblemStats) -> float:
-        del problem_id
+    def score(self, candidate: SchedulingCandidate) -> float:
+        stats = candidate.stats
         attempt_factor = min(stats.total_count, self.max_attempt_weight) / max(
             self.max_attempt_weight,
             1,
@@ -44,10 +51,15 @@ class WeightedTrainingPolicy:
         average_time = stats.average_ac_time if stats.ac_count else self.max_time_weight
         time_factor = min(average_time, self.max_time_weight) / self.max_time_weight
         mastery = stats.accuracy * attempt_factor
-        return (
+        difficulty = candidate.context.metadata.difficulty
+        difficulty_factor = (
+            min(max(difficulty, 0.0), 1.0) if difficulty is not None else 0.5
+        )
+        return candidate.context.selection_weight * (
             (1.0 - mastery) * 2.0
             + (1.0 - stats.accuracy) * 2.0
             + time_factor
+            + difficulty_factor
             + self._random_value() * 0.25
         )
 
@@ -55,13 +67,22 @@ class WeightedTrainingPolicy:
 class Scheduler:
     def __init__(
         self,
-        problem_ids: list[str],
+        problems: list[ProblemRef],
         progress_store: ProgressStore,
         policy: SchedulingPolicy | None = None,
+        contexts: dict[ProblemId, SchedulingContext] | None = None,
     ):
-        self.active_problem_ids = [ProblemId(problem_id) for problem_id in problem_ids]
+        self.problems = {problem.key: problem for problem in problems}
+        self.active_problem_ids = list(self.problems)
         self.progress_store = progress_store
         self.policy = policy or WeightedTrainingPolicy()
+        self.contexts = contexts or {
+            problem.key: SchedulingContext(
+                selection_weight=1.0,
+                metadata=ProblemMetadata(),
+            )
+            for problem in problems
+        }
         self.q_queue: list[tuple[float, ProblemId]] = []
         self._init_queue()
 
@@ -77,7 +98,15 @@ class Scheduler:
         )
 
     def _calculate_weight(self, problem_id: ProblemId) -> float:
-        return self.policy.score(problem_id, self._get_stats(problem_id))
+        problem = self.problems[problem_id]
+        context = self.contexts[problem_id]
+        return self.policy.score(
+            SchedulingCandidate(
+                problem=problem,
+                stats=self._get_stats(problem_id),
+                context=context,
+            )
+        )
 
     def _init_queue(self) -> None:
         for problem_id in self.active_problem_ids:

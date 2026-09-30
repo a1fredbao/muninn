@@ -27,7 +27,7 @@ with the same ID as an existing one overwrites the previous version.
     "version": "1.0.0",
     "description": "A brief description.",
     "entrypoint": "plugin:Plugin",
-    "api_version": "1"
+    "api_version": "2"
 }
 ```
 
@@ -40,10 +40,12 @@ with the same ID as an existing one overwrites the previous version.
 | `description` | string | No       | Short description of the pack's content.                                                                                                                                                                      |
 | `source`      | string | Auto     | Set by Muninn on install. Tracks where the pack came from so `muninn upgrade` knows where to check for updates. One of `local:<abspath>`, `github:user/repo`, or `github:user/repo@ref`. Do not set manually. |
 | `entrypoint`  | string | Yes      | Plugin class location in `module:ClassName` form.                                                                                                                                                             |
-| `api_version` | string | Yes      | Plugin API version. Current version is `1`; missing values are treated as legacy `0`.                                                                                                                        |
+| `api_version` | string | Yes      | Plugin API version. Current version is `2`.                                                                                                                                                                   |
+| `content_hash` | string | Auto     | SHA-256 hash managed by Muninn. Used to skip unchanged reinstall and detect same-version changes.                                                                                                            |
 
 Record IDs and question keys must be stable across pack updates. Muninn
-uses `<record_id>::<question_key>` as the persistent progress key.
+hashes the pack ID, question-type key, and local problem ID into the
+persistent problem key.
 
 ## Distribution
 
@@ -67,12 +69,13 @@ When a pack is installed, Muninn records the installation source in
 `muninn upgrade` to upgrade all packs) to:
 
 1. Read `manifest.json` from the recorded source (local path or GitHub).
-2. Compare the source version against the installed version.
-3. Re-install the pack if the source version is newer.
+2. Compare the source version and staged content hash.
+3. Reinstall when the version is newer or the content changed.
 
 Pack authors should [bump the `version` field](https://semver.org/)
 whenever they publish changes — that is the signal Muninn uses to
-determine whether an upgrade is available.
+determine whether an upgrade is available. Same-version content changes
+are also detected by hash. `--force` bypasses the hash check.
 
 ## Dependencies
 

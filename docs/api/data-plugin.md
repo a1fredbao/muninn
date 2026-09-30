@@ -12,19 +12,19 @@ import json
 import os
 from typing import ClassVar
 
-from muninn.core.helpers import DataPlugin, Matchers, QuestionType
+from muninn.core.helpers import DataPlugin, Matchers, QuestionTypeSpec
 
 
 class Plugin(DataPlugin):
-    QUESTION_TYPES: ClassVar[list[QuestionType]] = [
-        QuestionType(
+    QUESTION_TYPES: ClassVar[list[QuestionTypeSpec]] = [
+        QuestionTypeSpec(
             key="symbol-to-name",
             label="Symbol -> Name",
             statement=lambda el: f"Element: {el['sym']}",
             answer=lambda el: el["name"],
             matcher=Matchers.case_insensitive("name"),
         ),
-        QuestionType(
+        QuestionTypeSpec(
             key="name-to-number",
             label="Name -> Number",
             statement=lambda el: f"Element: {el['name']}",
@@ -41,7 +41,7 @@ class Plugin(DataPlugin):
 
 ## QUESTION_TYPES
 
-`QUESTION_TYPES` is a list of `QuestionType` objects. Each represents one
+`QUESTION_TYPES` is a list of `QuestionTypeSpec` objects. Each represents one
 question direction.
 
 Use a stable `key` for persistence. The human-readable `label` may change
@@ -72,34 +72,30 @@ def filter(self, record, q_type):
     return True
 ```
 
-## _resolve(problem_id)
-
-Returns `(record, QuestionType)` for a stable problem ID. Override
-`get_expand_info()` when the expansion needs both values:
-
-```python
-def get_expand_info(self, problem_id: str) -> str:
-    element, _ = self._resolve(problem_id)
-    return f"{element['name']} - Period {element['period']}"
-```
+`filter` is retained for early plugin compatibility, but new packs should
+normalize records before constructing question types. The host may remove
+this hook in a future plugin API version.
 
 ## Problem ID Format
 
-IDs are generated as:
+Each question type exposes `record_id` as its local problem ID. The host
+then hashes:
 
 ```text
-{record_id}::{question_key}
+SHA-256(pack_id, question_type_key, local_problem_id)
 ```
 
-Reordering records must not change progress. The old index-based format
-is retained only as a compatibility migration path.
+Reordering records must not change progress.
 
-## QuestionType
+## QuestionTypeSpec
 
 | Field       | Type                  | Description |
 | ----------- | --------------------- | ----------- |
-| `key`       | `str \| None`         | Stable persistence key. Defaults to `label` for legacy packs. |
+| `key`       | `str`                 | Stable persistence key. |
 | `label`     | `str`                 | Human-readable name shown in the question header. |
+| `description` | `str`               | Optional description shown in the group builder. |
 | `statement` | `(dict) -> str`       | Renders the question text. |
 | `answer`    | `(dict) -> str`       | Renders the expected answer. |
 | `matcher`   | `(dict, str) -> bool` | Checks user input. |
+| `expand`    | `(dict) -> str`       | Optional expansion shown after a correct answer. |
+| `metadata`  | `(dict) -> object`    | Optional scheduling metadata. |

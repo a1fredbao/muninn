@@ -3,11 +3,11 @@
 import asyncio
 import time
 from pathlib import Path
+from typing import ClassVar
 
 from textual.containers import Container
 from textual.widgets import DataTable, TextArea
 
-from muninn.core.state import StateManager
 from muninn.plugin_api import BaseTrainingPlugin
 from muninn.services.manifest import PackManifest, PackSummary
 from muninn.services.operations import OperationResult
@@ -16,7 +16,8 @@ from muninn.services.plugin_loader import (
     InProcessPluginAdapter,
     LoadedPlugin,
 )
-from muninn.services.training_session import TrainingSession
+from muninn.services.training_session import QuestionRoute, TrainingSession
+from muninn.services.user_config import UserConfigStore
 from muninn.tui.app import MuninnApp
 from muninn.tui.screens.dialogs import (
     InstallDialog,
@@ -66,16 +67,29 @@ class _PackageManager:
         return OperationResult.success(pack_id)
 
 
-class _SlowPlugin(BaseTrainingPlugin):
-    def __init__(self):
-        super().__init__("")
-
-    def load_data(self):
-        self.ids = ["1"]
+class _QuestionType:
+    key = "questions"
+    label = "Questions"
+    description = ""
+    ids: ClassVar[list[str]] = ["1"]
 
     def get_all_problem_ids(self):
         return self.ids
 
+    def describe_problem(self, problem_id):
+        return None
+
+    def check_answer(self, problem_id, user_input):
+        raise NotImplementedError
+
+    def get_expected_display(self, problem_id):
+        return "1"
+
+    def get_expand_info(self, problem_id):
+        return ""
+
+
+class _SlowQuestionType(_QuestionType):
     def render_statement(self, problem_id):
         return "Slow question"
 
@@ -83,20 +97,15 @@ class _SlowPlugin(BaseTrainingPlugin):
         time.sleep(0.25)
         return user_input == problem_id
 
-    def get_expected_display(self, problem_id):
-        return "1"
+
+class _SlowPlugin(BaseTrainingPlugin):
+    def get_question_types(self):
+        return [_SlowQuestionType()]
 
 
-class _CapturePlugin(BaseTrainingPlugin):
+class _CaptureQuestionType(_QuestionType):
     def __init__(self):
         self.received = []
-        super().__init__("")
-
-    def load_data(self):
-        self.ids = ["1"]
-
-    def get_all_problem_ids(self):
-        return self.ids
 
     def render_statement(self, problem_id):
         return "Multiline question"
@@ -105,33 +114,41 @@ class _CapturePlugin(BaseTrainingPlugin):
         self.received.append(user_input)
         return True
 
-    def get_expected_display(self, problem_id):
-        return "1"
 
-
-class _FailingPlugin(BaseTrainingPlugin):
+class _CapturePlugin(BaseTrainingPlugin):
     def __init__(self):
+        self.question_type = _CaptureQuestionType()
         super().__init__("")
 
-    def load_data(self):
-        self.ids = ["1"]
+    def get_question_types(self):
+        return [self.question_type]
 
-    def get_all_problem_ids(self):
-        return self.ids
+    @property
+    def received(self):
+        return self.question_type.received
 
+
+class _FailingQuestionType(_QuestionType):
     def render_statement(self, problem_id):
         return "Failing question"
 
     def check_answer(self, problem_id, user_input):
         raise RuntimeError("judge failed")
 
-    def get_expected_display(self, problem_id):
-        return "1"
+
+class _FailingPlugin(BaseTrainingPlugin):
+    def get_question_types(self):
+        return [_FailingQuestionType()]
 
 
-class _RenderFailingPlugin(_FailingPlugin):
+class _RenderFailingQuestionType(_FailingQuestionType):
     def render_statement(self, problem_id):
         raise RuntimeError("render failed")
+
+
+class _RenderFailingPlugin(BaseTrainingPlugin):
+    def get_question_types(self):
+        return [_RenderFailingQuestionType()]
 
 
 async def _make_session(plugin: BaseTrainingPlugin, tmp_path: Path, pack_id: str):
@@ -145,19 +162,31 @@ async def _make_session(plugin: BaseTrainingPlugin, tmp_path: Path, pack_id: str
             name=pack_id,
             version="1.0.0",
             entrypoint="plugin:Plugin",
-            api_version="1",
+            api_version="2",
         ),
         entrypoint="plugin:Plugin",
         environment={},
     )
     adapter = InProcessPluginAdapter(loaded, plugin)
-    store = StateManager(pack_id, str(tmp_path / "states"))
-    return await TrainingSession.create(pack_id, adapter, store)
+    question_type = plugin.get_question_types()[0]
+    return await TrainingSession.create(
+        [
+            QuestionRoute(
+                pack_id=pack_id,
+                question_type_id=question_type.key,
+                plugin=adapter,
+            )
+        ],
+        state_dir=str(tmp_path / "states"),
+    )
 
 
-def test_library_screen_shows_pack_metadata():
+def test_library_screen_shows_pack_metadata(tmp_path):
     async def exercise():
-        app = MuninnApp(package_manager=_PackageManager())
+        app = MuninnApp(
+            package_manager=_PackageManager(),
+            config_store=UserConfigStore(str(tmp_path / "config.json")),
+        )
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.pause()
             table = app.screen.query_one("#pack-table", DataTable)
@@ -166,13 +195,20 @@ def test_library_screen_shows_pack_metadata():
             assert "2.1.0" in str(metadata.render())
             assert "local:/tmp/sample" in str(metadata.render())
 
+            await pilot.press("/")
+            await pilot.pause()
+            assert type(app.screen).__name__ == "CommandPalette"
+
     asyncio.run(exercise())
 
 
-def test_library_exposes_management_dialog_and_quit_binding():
+def test_library_exposes_management_dialog_and_quit_binding(tmp_path):
     async def exercise():
         manager = _PackageManager()
-        app = MuninnApp(package_manager=manager)
+        app = MuninnApp(
+            package_manager=manager,
+            config_store=UserConfigStore(str(tmp_path / "config.json")),
+        )
         async with app.run_test(size=(120, 30)) as pilot:
             await pilot.pause()
             assert app.screen.active_bindings["ctrl+c"].binding.show
@@ -203,9 +239,12 @@ def test_library_exposes_management_dialog_and_quit_binding():
     asyncio.run(exercise())
 
 
-def test_ctrl_c_quits_library_immediately():
+def test_ctrl_c_quits_library_immediately(tmp_path):
     async def exercise():
-        app = MuninnApp(package_manager=_PackageManager())
+        app = MuninnApp(
+            package_manager=_PackageManager(),
+            config_store=UserConfigStore(str(tmp_path / "config.json")),
+        )
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.pause()
             await pilot.press("ctrl+c")
@@ -215,9 +254,12 @@ def test_ctrl_c_quits_library_immediately():
     asyncio.run(exercise())
 
 
-def test_ctrl_p_opens_command_palette():
+def test_ctrl_p_opens_command_palette(tmp_path):
     async def exercise():
-        app = MuninnApp(package_manager=_PackageManager())
+        app = MuninnApp(
+            package_manager=_PackageManager(),
+            config_store=UserConfigStore(str(tmp_path / "config.json")),
+        )
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.pause()
             await pilot.press("ctrl+p")
@@ -227,9 +269,12 @@ def test_ctrl_p_opens_command_palette():
     asyncio.run(exercise())
 
 
-def test_ctrl_q_shows_notice_without_quitting():
+def test_ctrl_q_shows_notice_without_quitting(tmp_path):
     async def exercise():
-        app = MuninnApp(package_manager=_PackageManager())
+        app = MuninnApp(
+            package_manager=_PackageManager(),
+            config_store=UserConfigStore(str(tmp_path / "config.json")),
+        )
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.pause()
             await pilot.press("ctrl+q")
@@ -245,7 +290,10 @@ def test_ctrl_q_shows_notice_without_quitting():
 def test_slow_sync_judging_does_not_block_pilot(tmp_path):
     async def exercise():
         session = await _make_session(_SlowPlugin(), tmp_path, "slow")
-        app = MuninnApp(package_manager=_PackageManager())
+        app = MuninnApp(
+            package_manager=_PackageManager(),
+            config_store=UserConfigStore(str(tmp_path / "config.json")),
+        )
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.pause()
             await app.push_screen(SessionScreen(session))
@@ -274,7 +322,10 @@ def test_multiline_answer_submits_on_enter(tmp_path):
     async def exercise():
         plugin = _CapturePlugin()
         session = await _make_session(plugin, tmp_path, "multiline")
-        app = MuninnApp(package_manager=_PackageManager())
+        app = MuninnApp(
+            package_manager=_PackageManager(),
+            config_store=UserConfigStore(str(tmp_path / "config.json")),
+        )
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.pause()
             await app.push_screen(SessionScreen(session))
@@ -303,7 +354,10 @@ def test_multiline_answer_submits_on_enter(tmp_path):
 def test_continue_from_judge_error_restores_answer_input(tmp_path):
     async def exercise():
         session = await _make_session(_FailingPlugin(), tmp_path, "failing")
-        app = MuninnApp(package_manager=_PackageManager())
+        app = MuninnApp(
+            package_manager=_PackageManager(),
+            config_store=UserConfigStore(str(tmp_path / "config.json")),
+        )
         async with app.run_test(size=(100, 30)) as pilot:
             await pilot.pause()
             await app.push_screen(SessionScreen(session))
@@ -339,7 +393,10 @@ def test_render_error_can_skip_problem(tmp_path):
             tmp_path,
             "render-failing",
         )
-        app = MuninnApp(package_manager=_PackageManager())
+        app = MuninnApp(
+            package_manager=_PackageManager(),
+            config_store=UserConfigStore(str(tmp_path / "config.json")),
+        )
         async with app.run_test(size=(100, 30)) as pilot:
             await app.push_screen(SessionScreen(session))
             for _ in range(50):
@@ -348,8 +405,8 @@ def test_render_error_can_skip_problem(tmp_path):
                     break
 
             assert isinstance(app.screen, JudgeErrorDialog)
-            await pilot.click("#skip")
-            await pilot.pause()
+            await app.screen.dismiss("skip")
+            await pilot.pause(0.05)
 
             assert isinstance(app.screen, SessionScreen)
             assert app.screen.phase == "empty"

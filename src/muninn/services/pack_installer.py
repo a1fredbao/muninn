@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -11,12 +12,14 @@ import urllib.request
 import uuid
 import zipfile
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 from .dependency import DependencyEnvironment
 from .manifest import ManifestError, PackManifest, load_manifest_summaries
 from .operations import (
     CancellationToken,
+    InstallResult,
     ProgressCallback,
     emit,
 )
@@ -133,6 +136,8 @@ class StagedPack:
     packs_dir: str
     venvs_dir: str
     source_info: str
+    content_hash: str
+    environment_required: bool
     committed: bool = False
 
     @property
@@ -225,21 +230,47 @@ class PackInstaller:
         source: str,
         progress: ProgressCallback | None = None,
         cancel_token: CancellationToken | None = None,
-    ) -> str:
+        *,
+        force: bool = False,
+    ) -> InstallResult:
         resolved = self.sources.resolve(source)
-        staged = self.stage(resolved, progress, cancel_token)
+        staged = self.stage(
+            resolved,
+            progress,
+            cancel_token,
+            force=force,
+        )
         try:
             self._raise_if_cancelled(cancel_token)
-            staged.commit()
+            installed = self._read_installed_manifest(staged.pack_id)
+            unchanged = (
+                installed is not None
+                and installed.content_hash == staged.content_hash
+                and (
+                    not staged.environment_required
+                    or os.path.isdir(staged.target_environment_dir)
+                )
+            )
+            changed = force or not unchanged
+            if changed:
+                staged.commit()
+            return InstallResult(
+                pack_id=staged.pack_id,
+                version=staged.manifest.version,
+                content_hash=staged.content_hash,
+                changed=changed,
+                forced=force,
+            )
         finally:
             staged.cleanup()
-        return staged.pack_id
 
     def stage(
         self,
         source: ResolvedPackSource,
         progress: ProgressCallback | None = None,
         cancel_token: CancellationToken | None = None,
+        *,
+        force: bool = False,
     ) -> StagedPack:
         self._raise_if_cancelled(cancel_token)
         emit(progress, f"Installing pack from '{source.location}'.")
@@ -247,13 +278,35 @@ class PackInstaller:
         try:
             root = self._normalise_package_root(temp_dir)
             manifest = self._read_staged_manifest(root, source.source_info)
-            environment_temp_dir = self.dependencies.prepare(
-                root,
-                manifest.id,
-                manifest.version,
-                progress,
-                cancel_token,
+            requirements_path = os.path.join(root, "requirements.txt")
+            environment_required = (
+                os.path.isfile(requirements_path)
+                and os.path.getsize(requirements_path) > 0
             )
+            installed = self._read_installed_manifest(manifest.id)
+            unchanged = (
+                installed is not None
+                and installed.content_hash == manifest.content_hash
+                and (
+                    not environment_required
+                    or os.path.isdir(
+                        os.path.join(
+                            self.venvs_dir,
+                            manifest.id,
+                            manifest.version,
+                        )
+                    )
+                )
+            )
+            environment_temp_dir = None
+            if force or not unchanged:
+                environment_temp_dir = self.dependencies.prepare(
+                    root,
+                    manifest.id,
+                    manifest.version,
+                    progress,
+                    cancel_token,
+                )
             self._raise_if_cancelled(cancel_token)
             return StagedPack(
                 manifest=manifest,
@@ -263,6 +316,8 @@ class PackInstaller:
                 packs_dir=self.packs_dir,
                 venvs_dir=self.venvs_dir,
                 source_info=source.source_info,
+                content_hash=manifest.content_hash or "",
+                environment_required=environment_required,
             )
         except Exception:
             shutil.rmtree(temp_dir, ignore_errors=True)
@@ -270,6 +325,12 @@ class PackInstaller:
 
     def list_summaries(self):
         return load_manifest_summaries(self.packs_dir)
+
+    def _read_installed_manifest(self, pack_id: str) -> PackManifest | None:
+        manifest_path = Path(self.packs_dir) / pack_id / "manifest.json"
+        if not manifest_path.exists():
+            return None
+        return PackManifest.from_path(manifest_path)
 
     def _stage_source(
         self,
@@ -354,10 +415,53 @@ class PackInstaller:
         except ManifestError as exc:
             raise ValueError(f"Invalid manifest: {exc}") from exc
 
-        manifest = manifest.with_source(source_info) if source_info else manifest
+        content_hash = PackInstaller.compute_content_hash(root)
+        manifest = PackManifest(
+            id=manifest.id,
+            name=manifest.name,
+            version=manifest.version,
+            author=manifest.author,
+            description=manifest.description,
+            source=source_info or manifest.source,
+            entrypoint=manifest.entrypoint,
+            api_version=manifest.api_version,
+            content_hash=content_hash,
+        )
         with open(manifest_path, "w", encoding="utf-8") as file:
             json.dump(manifest.to_dict(), file, indent=4, ensure_ascii=False)
         return manifest
+
+    @staticmethod
+    def compute_content_hash(root: str) -> str:
+        digest = hashlib.sha256()
+        root_path = Path(root)
+        for path in sorted(root_path.rglob("*")):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(root_path).as_posix()
+            if relative == "manifest.json":
+                try:
+                    raw = json.loads(path.read_text(encoding="utf-8"))
+                except json.JSONDecodeError:
+                    data = path.read_bytes()
+                else:
+                    if isinstance(raw, dict):
+                        raw.pop("source", None)
+                        raw.pop("content_hash", None)
+                    data = json.dumps(
+                        raw,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    ).encode("utf-8")
+            else:
+                data = path.read_bytes()
+            encoded_path = relative.encode("utf-8")
+            digest.update(len(encoded_path).to_bytes(8, "big"))
+            digest.update(encoded_path)
+            digest.update(len(data).to_bytes(8, "big"))
+            digest.update(data)
+        return f"sha256:{digest.hexdigest()}"
 
     @staticmethod
     def _raise_if_cancelled(cancel_token: CancellationToken | None) -> None:

@@ -5,5 +5,5 @@
     "version": "1.0.0",
     "description": "化学元素周期表 1-36 号元素的综合强化训练",
     "entrypoint": "plugin:Plugin",
-    "api_version": "1"
+    "api_version": "2"
 }

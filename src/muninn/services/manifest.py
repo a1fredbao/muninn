@@ -11,8 +11,11 @@ from typing import Any
 
 from packaging.version import InvalidVersion, Version
 
-SUPPORTED_API_VERSIONS = {"0", "1"}
+from ..plugin_api import API_VERSION
+
+SUPPORTED_API_VERSIONS = {"2"}
 PACK_ID_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+CONTENT_HASH_PATTERN = re.compile(r"^sha256:[a-f0-9]{64}$")
 
 
 class ManifestError(ValueError):
@@ -45,7 +48,8 @@ class PackManifest:
     description: str = ""
     source: str | None = None
     entrypoint: str = "plugin:Plugin"
-    api_version: str = "0"
+    api_version: str = API_VERSION
+    content_hash: str | None = None
 
     @classmethod
     def from_dict(
@@ -77,11 +81,20 @@ class PackManifest:
                 "manifest field 'entrypoint' must use 'module:ClassName'"
             )
 
-        api_version = str(data.get("api_version", "0"))
+        api_version = str(data.get("api_version", API_VERSION))
         if api_version not in SUPPORTED_API_VERSIONS:
             raise ManifestError(
                 f"unsupported plugin api_version {api_version!r}; "
                 f"supported: {', '.join(sorted(SUPPORTED_API_VERSIONS))}"
+            )
+
+        content_hash = data.get("content_hash")
+        if content_hash is not None and (
+            not isinstance(content_hash, str)
+            or CONTENT_HASH_PATTERN.fullmatch(content_hash) is None
+        ):
+            raise ManifestError(
+                "manifest field 'content_hash' must be 'sha256:<64 hex>'"
             )
 
         return cls(
@@ -97,6 +110,7 @@ class PackManifest:
             ),
             entrypoint=entrypoint,
             api_version=api_version,
+            content_hash=content_hash,
         )
 
     @classmethod
@@ -123,6 +137,7 @@ class PackManifest:
             source=source,
             entrypoint=self.entrypoint,
             api_version=self.api_version,
+            content_hash=self.content_hash,
         )
 
 

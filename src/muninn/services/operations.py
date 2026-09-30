@@ -81,6 +81,17 @@ class UpgradeResult:
         return self.status == "failed"
 
 
+@dataclass(frozen=True, slots=True)
+class InstallResult:
+    """Result of staging and optionally committing a pack."""
+
+    pack_id: str
+    version: str
+    content_hash: str
+    changed: bool
+    forced: bool = False
+
+
 ProgressCallback = Callable[[PackageProgress], None]
 
 

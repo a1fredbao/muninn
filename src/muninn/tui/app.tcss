@@ -10,8 +10,12 @@ ModalScreen {
     height: 1fr;
 }
 
-#pack-table {
+#library-pack-pane {
     width: 1fr;
+    height: 1fr;
+}
+
+#pack-table {
     height: 1fr;
     border: solid $primary;
 }
@@ -43,6 +47,85 @@ ModalScreen {
 
 #session-loading {
     height: 1;
+}
+
+#group-body {
+    height: 1fr;
+}
+
+#group-sidebar {
+    width: 30;
+    min-width: 24;
+    padding: 1;
+    border: solid $secondary;
+}
+
+#group-catalog {
+    width: 1fr;
+    padding: 1;
+    border: solid $primary;
+}
+
+#group-detail {
+    width: 42;
+    min-width: 32;
+    padding: 1;
+    border: solid $secondary;
+}
+
+.pane-title {
+    height: auto;
+    text-style: bold;
+    color: $accent;
+    margin-bottom: 1;
+}
+
+#group-list {
+    height: 1fr;
+    margin-top: 1;
+}
+
+#catalog-tree {
+    height: 1fr;
+    margin-top: 1;
+}
+
+#group-name {
+    margin-bottom: 1;
+}
+
+#group-summary {
+    height: auto;
+    margin-bottom: 1;
+}
+
+#selection-summary {
+    height: 1fr;
+    color: $text-muted;
+}
+
+#group-loading {
+    height: 1;
+}
+
+.compact-actions {
+    height: auto;
+    align-horizontal: right;
+    margin-top: 1;
+}
+
+.compact-actions Button {
+    margin-left: 1;
+}
+
+.sidebar-actions {
+    height: auto;
+    margin-top: 1;
+}
+
+.sidebar-actions Button {
+    width: 100%;
+    margin-top: 1;
 }
 
 #session-shell {

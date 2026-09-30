@@ -7,9 +7,25 @@ from pathlib import Path
 
 import pytest
 
+from muninn.domain import ProblemId, ProblemRef
 from muninn.services.manifest import PackManifest
 from muninn.services.pack_installer import PackSourceResolver
 from muninn.services.package_manager import PackageManager
+
+
+def _ref(
+    pack_id: str,
+    question_type: str = "questions",
+    problem_id: str = "1",
+) -> ProblemRef:
+    return ProblemRef(
+        key=ProblemId(f"{pack_id}:{question_type}:{problem_id}"),
+        pack_id=pack_id,
+        pack_key=f"pack-{pack_id}",
+        question_type_id=question_type,
+        question_type_key=f"type-{question_type}",
+        local_problem_id=problem_id,
+    )
 
 
 def _write_pack(
@@ -25,7 +41,7 @@ def _write_pack(
         version=version,
         description="Test pack",
         entrypoint="plugin:Plugin",
-        api_version="1",
+        api_version="2",
     )
     (path / "manifest.json").write_text(
         json.dumps(manifest.to_dict(), indent=4),
@@ -35,12 +51,17 @@ def _write_pack(
         """from muninn.plugin_api import BaseTrainingPlugin
 
 
-class Plugin(BaseTrainingPlugin):
-    def load_data(self):
-        self.ids = ["1", "2"]
+class QuestionType:
+    key = "questions"
+    label = "Questions"
+    description = "Test questions"
 
     def get_all_problem_ids(self):
+        self.ids = ["1", "2"]
         return self.ids
+
+    def describe_problem(self, problem_id):
+        return None
 
     def render_statement(self, problem_id):
         print("plugin debug")
@@ -51,6 +72,17 @@ class Plugin(BaseTrainingPlugin):
 
     def get_expected_display(self, problem_id):
         return f"A{problem_id}"
+
+    def get_expand_info(self, problem_id):
+        return ""
+
+
+class Plugin(BaseTrainingPlugin):
+    def load_data(self):
+        self.question_type = QuestionType()
+
+    def get_question_types(self):
+        return [self.question_type]
 """,
         encoding="utf-8",
     )
@@ -76,7 +108,7 @@ class TestCreateTemplate:
         plugin_code = (pack_dir / "plugin.py").read_text()
 
         assert manifest["entrypoint"] == "plugin:Plugin"
-        assert manifest["api_version"] == "1"
+        assert manifest["api_version"] == "2"
         assert "muninn.core.helpers" in plugin_code
 
     def test_raises_if_exists(self, manager, tmp_path):
@@ -95,12 +127,46 @@ class TestInstallAndUninstall:
             (Path(manager.packs_dir) / "mypack" / "manifest.json").read_text()
         )
         assert manifest["source"] == f"local:{source.resolve()}"
+        assert manifest["content_hash"].startswith("sha256:")
 
         assert manager.install_pack(str(source)) == "mypack"
 
     def test_raises_for_nonexistent_path(self, manager):
         with pytest.raises(FileNotFoundError):
             manager.install_pack("/nonexistent/path/to/pack")
+
+    def test_unchanged_content_skips_reinstall(self, manager, tmp_path):
+        source = tmp_path / "source"
+        _write_pack(source, "hashed")
+
+        first = manager.install_pack_detailed(str(source))
+        second = manager.install_pack_detailed(str(source))
+
+        assert first.changed
+        assert not second.changed
+        assert first.content_hash == second.content_hash
+
+    def test_force_reinstalls_unchanged_content(self, manager, tmp_path):
+        source = tmp_path / "source"
+        _write_pack(source, "forced")
+        manager.install_pack(str(source))
+
+        result = manager.install_pack_detailed(str(source), force=True)
+
+        assert result.changed
+        assert result.forced
+
+    def test_same_version_content_change_reinstalls(self, manager, tmp_path):
+        source = tmp_path / "source"
+        _write_pack(source, "changed")
+        first = manager.install_pack_detailed(str(source))
+
+        with open(source / "plugin.py", "a", encoding="utf-8") as file:
+            file.write("\n# changed\n")
+        second = manager.install_pack_detailed(str(source))
+
+        assert second.changed
+        assert second.content_hash != first.content_hash
 
     def test_uninstall_removes_pack_and_environment(self, manager, tmp_path):
         source = tmp_path / "source"
@@ -195,6 +261,16 @@ class TestUpgrade:
         result = manager.upgrade_pack_result("p2")
         assert result.status == "failed"
 
+    def test_upgrade_same_version_content_change(self, manager, tmp_path):
+        source = tmp_path / "source"
+        _write_pack(source, "hash-upgrade", "1.0.0")
+        manager.install_pack(str(source))
+
+        with open(source / "plugin.py", "a", encoding="utf-8") as file:
+            file.write("\n# updated without version bump\n")
+
+        assert manager.upgrade_pack("hash-upgrade") is True
+
     def test_upgrade_no_source_is_skipped(self, manager):
         pack_dir = Path(manager.packs_dir) / "nosource" / "manifest.json"
         pack_dir.parent.mkdir(parents=True)
@@ -251,9 +327,12 @@ class TestListingAndLoading:
         async def exercise():
             adapter = await manager.create_plugin_adapter(loaded)
             try:
-                assert await adapter.get_all_problem_ids() == ["1", "2"]
-                assert await adapter.render_statement("1") == "Q1"
-                assert await adapter.check_answer("1", "1")
+                assert await adapter.get_all_problem_ids(_ref("mypack")) == [
+                    "1",
+                    "2",
+                ]
+                assert await adapter.render_statement(_ref("mypack")) == "Q1"
+                assert await adapter.check_answer(_ref("mypack"), "1")
             finally:
                 await adapter.aclose()
 
@@ -275,12 +354,15 @@ class TestListingAndLoading:
                 """from muninn.plugin_api import BaseTrainingPlugin
 
 
-class Plugin(BaseTrainingPlugin):
-    def load_data(self):
-        self.ids = ["1"]
-
+class QuestionType:
+    key = "questions"
+    label = "Questions"
+    description = ""
     def get_all_problem_ids(self):
-        return self.ids
+        return ["1"]
+
+    def describe_problem(self, problem_id):
+        return None
 
     def render_statement(self, problem_id):
         import shared_dep
@@ -291,6 +373,14 @@ class Plugin(BaseTrainingPlugin):
 
     def get_expected_display(self, problem_id):
         return "A"
+
+    def get_expand_info(self, problem_id):
+        return ""
+
+
+class Plugin(BaseTrainingPlugin):
+    def get_question_types(self):
+        return [QuestionType()]
 """,
                 encoding="utf-8",
             )
@@ -302,7 +392,14 @@ class Plugin(BaseTrainingPlugin):
                 for pack_id in ("pack-a", "pack-b"):
                     loaded = manager.load_plugin(pack_id)
                     adapters.append(await manager.create_plugin_adapter(loaded))
-                values = [await adapter.render_statement("1") for adapter in adapters]
+                values = [
+                    await adapter.render_statement(_ref(pack_id))
+                    for adapter, pack_id in zip(
+                        adapters,
+                        ("pack-a", "pack-b"),
+                        strict=True,
+                    )
+                ]
                 assert values == ["A", "B"]
             finally:
                 for adapter in adapters:

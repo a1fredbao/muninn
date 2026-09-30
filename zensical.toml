@@ -17,6 +17,7 @@ nav = [
         { "Matchers" = "api/matchers.md" },
     ] },
     { "Pack Specification" = "pack-spec.md" },
+    { "Training Groups" = "plugin-groups.md" },
 ]
 
 [project.theme]

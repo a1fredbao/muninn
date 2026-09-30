@@ -11,7 +11,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from ..plugin_api import Plugin, PluginContext
+from ..domain import ProblemMetadata, ProblemRef
+from ..plugin_api import (
+    Plugin,
+    PluginContext,
+    QuestionTypeDescriptor,
+    coerce_problem_metadata,
+)
 from .dependency import DependencyEnvironment
 from .manifest import ManifestError, PackManifest, validate_pack_id
 
@@ -207,47 +213,68 @@ class WorkerPluginAdapter:
                 raise PluginProtocolError(f"{error_type}: {message}")
             return response.get("result")
 
-    async def get_all_problem_ids(self) -> list[str]:
-        result = await self._request("get_all_problem_ids")
+    async def list_question_types(self) -> list[QuestionTypeDescriptor]:
+        result = await self._request("list_question_types")
+        return [
+            QuestionTypeDescriptor(
+                key=str(item["key"]),
+                label=str(item.get("label") or item["key"]),
+                description=str(item.get("description") or ""),
+                problem_count=int(item.get("problem_count") or 0),
+            )
+            for item in result
+        ]
+
+    async def get_all_problem_ids(self, problem: ProblemRef) -> list[str]:
+        result = await self._request(
+            "get_all_problem_ids",
+            question_type=problem.question_type_id,
+        )
         return [str(problem_id) for problem_id in result]
 
-    async def render_statement(self, problem_id: str) -> str:
+    async def describe_problem(self, problem: ProblemRef) -> ProblemMetadata:
+        result = await self._request(
+            "describe_problem",
+            question_type=problem.question_type_id,
+            problem_id=problem.local_problem_id,
+        )
+        return coerce_problem_metadata(result)
+
+    async def render_statement(self, problem: ProblemRef) -> str:
         return str(
             await self._request(
                 "render_statement",
-                problem_id=problem_id,
+                question_type=problem.question_type_id,
+                problem_id=problem.local_problem_id,
             )
         )
 
-    async def check_answer(self, problem_id: str, user_input: str) -> bool:
+    async def check_answer(self, problem: ProblemRef, user_input: str) -> bool:
         return bool(
             await self._request(
                 "check_answer",
-                problem_id=problem_id,
+                question_type=problem.question_type_id,
+                problem_id=problem.local_problem_id,
                 user_input=user_input,
             )
         )
 
-    async def get_expected_display(self, problem_id: str) -> str:
+    async def get_expected_display(self, problem: ProblemRef) -> str:
         return str(
             await self._request(
                 "get_expected_display",
-                problem_id=problem_id,
+                question_type=problem.question_type_id,
+                problem_id=problem.local_problem_id,
             )
         )
 
-    async def get_expand_info(self, problem_id: str) -> str:
+    async def get_expand_info(self, problem: ProblemRef) -> str:
         result = await self._request(
             "get_expand_info",
-            problem_id=problem_id,
+            question_type=problem.question_type_id,
+            problem_id=problem.local_problem_id,
         )
         return "" if result is None else str(result)
-
-    async def legacy_problem_id_map(self) -> dict[str, str]:
-        result = await self._request("get_legacy_problem_id_map")
-        if not isinstance(result, dict):
-            return {}
-        return {str(key): str(value) for key, value in result.items()}
 
     def close(self) -> None:
         if self._closed:
@@ -287,6 +314,15 @@ class InProcessPluginAdapter:
                     workspace_dir=loaded.pack_dir,
                 )
             )
+        question_types = plugin.get_question_types()
+        if inspect.isawaitable(question_types):
+            raise TypeError(
+                "InProcessPluginAdapter cannot await get_question_types in "
+                "its constructor; use WorkerPluginAdapter for async plugins."
+            )
+        self._question_types = {
+            question_type.key: question_type for question_type in question_types
+        }
 
     @staticmethod
     async def _invoke(callable_obj: Any, *args: Any) -> Any:
@@ -297,45 +333,76 @@ class InProcessPluginAdapter:
             return await result
         return result
 
-    async def get_all_problem_ids(self) -> list[str]:
-        result = await self._invoke(self.plugin.get_all_problem_ids)
+    def _question_type(self, problem: ProblemRef):
+        try:
+            return self._question_types[problem.question_type_id]
+        except KeyError as exc:
+            raise KeyError(
+                f"Unknown question type: {problem.question_type_id!r}"
+            ) from exc
+
+    async def list_question_types(self) -> list[QuestionTypeDescriptor]:
+        descriptors: list[QuestionTypeDescriptor] = []
+        for question_type in self._question_types.values():
+            problem_ids = await self._invoke(question_type.get_all_problem_ids)
+            descriptors.append(
+                QuestionTypeDescriptor(
+                    key=question_type.key,
+                    label=question_type.label,
+                    description=question_type.description,
+                    problem_count=len(problem_ids),
+                )
+            )
+        return descriptors
+
+    async def get_all_problem_ids(self, problem: ProblemRef) -> list[str]:
+        question_type = self._question_type(problem)
+        result = await self._invoke(question_type.get_all_problem_ids)
         return [str(problem_id) for problem_id in result]
 
-    async def render_statement(self, problem_id: str) -> str:
-        return str(await self._invoke(self.plugin.render_statement, problem_id))
+    async def describe_problem(self, problem: ProblemRef) -> ProblemMetadata:
+        question_type = self._question_type(problem)
+        result = await self._invoke(
+            question_type.describe_problem,
+            problem.local_problem_id,
+        )
+        return coerce_problem_metadata(result)
 
-    async def check_answer(self, problem_id: str, user_input: str) -> bool:
+    async def render_statement(self, problem: ProblemRef) -> str:
+        question_type = self._question_type(problem)
+        return str(
+            await self._invoke(
+                question_type.render_statement,
+                problem.local_problem_id,
+            )
+        )
+
+    async def check_answer(self, problem: ProblemRef, user_input: str) -> bool:
+        question_type = self._question_type(problem)
         return bool(
             await self._invoke(
-                self.plugin.check_answer,
-                problem_id,
+                question_type.check_answer,
+                problem.local_problem_id,
                 user_input,
             )
         )
 
-    async def get_expected_display(self, problem_id: str) -> str:
+    async def get_expected_display(self, problem: ProblemRef) -> str:
+        question_type = self._question_type(problem)
         return str(
             await self._invoke(
-                self.plugin.get_expected_display,
-                problem_id,
+                question_type.get_expected_display,
+                problem.local_problem_id,
             )
         )
 
-    async def get_expand_info(self, problem_id: str) -> str:
+    async def get_expand_info(self, problem: ProblemRef) -> str:
+        question_type = self._question_type(problem)
         result = await self._invoke(
-            self.plugin.get_expand_info,
-            problem_id,
+            question_type.get_expand_info,
+            problem.local_problem_id,
         )
         return "" if result is None else str(result)
-
-    async def legacy_problem_id_map(self) -> dict[str, str]:
-        getter = getattr(self.plugin, "get_legacy_problem_id_map", None)
-        if getter is None:
-            return {}
-        result = await self._invoke(getter)
-        if not isinstance(result, dict):
-            return {}
-        return {str(key): str(value) for key, value in result.items()}
 
     def close(self) -> None:
         if self._closed:

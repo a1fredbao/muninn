@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 from ..core.progress import ProgressStore
 from ..core.scheduler import Scheduler
-from ..domain import AttemptOutcome, AttemptResult, ProblemId
-from ..plugin_api import Plugin
+from ..domain import AttemptOutcome, AttemptResult, ProblemId, ProblemRef
 
 
 class TrainingCoordinator:
@@ -13,11 +15,11 @@ class TrainingCoordinator:
 
     def __init__(
         self,
-        plugin: Plugin,
+        problems: Mapping[ProblemId, tuple[Any, ProblemRef]],
         progress_store: ProgressStore,
         scheduler: Scheduler,
     ) -> None:
-        self.plugin = plugin
+        self.problems = dict(problems)
         self.progress_store = progress_store
         self.scheduler = scheduler
 
@@ -27,7 +29,11 @@ class TrainingCoordinator:
         user_input: str,
         time_spent: float,
     ) -> AttemptResult:
-        raw_result = await self.plugin.check_answer(problem_id, user_input)
+        try:
+            plugin, problem = self.problems[problem_id]
+        except KeyError as exc:
+            raise KeyError(f"Unknown problem: {problem_id}") from exc
+        raw_result = await plugin.check_answer(problem, user_input)
         outcome = AttemptOutcome(
             problem_id=problem_id,
             user_input=user_input,

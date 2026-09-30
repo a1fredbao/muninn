@@ -8,7 +8,13 @@ from textual.app import ComposeResult
 from textual.binding import Binding, BindingType
 from textual.containers import Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import DataTable, Footer, Header, LoadingIndicator, Static
+from textual.widgets import (
+    DataTable,
+    Footer,
+    Header,
+    LoadingIndicator,
+    Static,
+)
 
 from ...services.manifest import PackSummary
 from ...services.package_manager import (
@@ -18,11 +24,13 @@ from ...services.package_manager import (
     PackageProgress,
 )
 from ...services.session_factory import SessionFactory
+from ...services.user_config import UserConfigStore
 from .dialogs import (
     ConfirmDialog,
     InstallDialog,
     OperationDialog,
 )
+from .group_builder import GroupBuilderScreen
 from .session import SessionScreen
 
 
@@ -36,23 +44,32 @@ class LibraryScreen(Screen[None]):
         Binding("U", "upgrade_all", "Upgrade all", show=True),
         Binding("d", "uninstall", "Uninstall", show=True),
         Binding("r", "refresh", "Refresh", show=True),
+        Binding("g", "groups", "Groups", show=True),
+        Binding("/", "search", "Search", show=False),
     ]
 
     def __init__(
         self,
         package_manager: PackageManager,
         session_factory: SessionFactory,
+        config_store: UserConfigStore,
     ) -> None:
         super().__init__()
         self.package_manager = package_manager
         self.session_factory = session_factory
+        self.config_store = config_store
         self._packs: dict[str, PackSummary] = {}
         self._loading_session = False
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
         with Horizontal(id="library-body"):
-            yield DataTable(id="pack-table", cursor_type="row", zebra_stripes=True)
+            with Vertical(id="library-pack-pane"):
+                yield DataTable(
+                    id="pack-table",
+                    cursor_type="row",
+                    zebra_stripes=True,
+                )
             with Vertical(id="pack-details"):
                 yield Static("Select a pack", id="pack-name")
                 yield Static("", id="pack-metadata")
@@ -68,6 +85,9 @@ class LibraryScreen(Screen[None]):
         table.focus()
 
     def refresh_packs(self) -> None:
+        invalidate = getattr(self.app, "invalidate_catalog_cache", None)
+        if invalidate is not None:
+            invalidate()
         table = self.query_one("#pack-table", DataTable)
         table.clear()
         self._packs = {}
@@ -268,6 +288,18 @@ class LibraryScreen(Screen[None]):
     def action_refresh(self) -> None:
         self.refresh_packs()
         self.notify("Pack list refreshed.", timeout=2)
+
+    def action_groups(self) -> None:
+        self.app.push_screen(
+            GroupBuilderScreen(
+                self.package_manager,
+                self.session_factory,
+                self.config_store,
+            )
+        )
+
+    def action_search(self) -> None:
+        self.app.action_command_palette()
 
     def _run_package_operation(self, title: str, operation) -> None:
         cancel_token = CancellationToken()

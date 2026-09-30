@@ -11,6 +11,9 @@ Muninn provides:
 - **Persistent state** so progress survives across sessions.
 - **A Textual pack library and training UI** with keyboard-driven
   management and progress feedback.
+- **Training groups** that combine question types from multiple packs.
+- **Persistent Textual themes** and searchable packs, groups, and
+  question types.
 
 ---
 

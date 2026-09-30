@@ -14,6 +14,7 @@ from .dependency import DependencyEnvironment
 from .manifest import PackManifest, PackSummary, validate_pack_id
 from .operations import (
     CancellationToken,
+    InstallResult,
     OperationCancelled,
     OperationResult,
     PackageProgress,
@@ -70,8 +71,30 @@ class PackageManager:
         source: str,
         progress: ProgressCallback | None = None,
         cancel_token: CancellationToken | None = None,
+        *,
+        force: bool = False,
     ) -> str:
-        return self.installer.install(source, progress, cancel_token)
+        return self.installer.install(
+            source,
+            progress,
+            cancel_token,
+            force=force,
+        ).pack_id
+
+    def install_pack_detailed(
+        self,
+        source: str,
+        progress: ProgressCallback | None = None,
+        cancel_token: CancellationToken | None = None,
+        *,
+        force: bool = False,
+    ) -> InstallResult:
+        return self.installer.install(
+            source,
+            progress,
+            cancel_token,
+            force=force,
+        )
 
     def uninstall_pack(
         self,
@@ -94,10 +117,17 @@ class PackageManager:
         source: str,
         progress: ProgressCallback | None = None,
         cancel_token: CancellationToken | None = None,
+        *,
+        force: bool = False,
     ) -> OperationResult[str]:
         try:
             return OperationResult.success(
-                self.install_pack(source, progress, cancel_token)
+                self.install_pack(
+                    source,
+                    progress,
+                    cancel_token,
+                    force=force,
+                )
             )
         except OperationCancelled:
             return OperationResult.cancelled()
@@ -144,11 +174,14 @@ class PackageManager:
         pack_id: str,
         progress: ProgressCallback | None = None,
         cancel_token: CancellationToken | None = None,
+        *,
+        force: bool = False,
     ) -> bool:
         return self.upgrade_pack_result(
             pack_id,
             progress,
             cancel_token,
+            force=force,
         ).upgraded
 
     def upgrade_pack_result(
@@ -156,6 +189,8 @@ class PackageManager:
         pack_id: str,
         progress: ProgressCallback | None = None,
         cancel_token: CancellationToken | None = None,
+        *,
+        force: bool = False,
     ) -> UpgradeResult:
         validate_pack_id(pack_id)
         self._raise_if_cancelled(cancel_token)
@@ -163,25 +198,35 @@ class PackageManager:
             pack_id,
             progress,
             cancel_token,
+            force=force,
         )
 
     def upgrade_all_results(
         self,
         progress: ProgressCallback | None = None,
         cancel_token: CancellationToken | None = None,
+        *,
+        force: bool = False,
     ) -> dict[str, UpgradeResult]:
-        return self.upgrades.upgrade_all_results(progress, cancel_token)
+        return self.upgrades.upgrade_all_results(
+            progress,
+            cancel_token,
+            force=force,
+        )
 
     def upgrade_all(
         self,
         progress: ProgressCallback | None = None,
         cancel_token: CancellationToken | None = None,
+        *,
+        force: bool = False,
     ) -> dict[str, bool]:
         return {
             pack_id: result.upgraded
             for pack_id, result in self.upgrade_all_results(
                 progress,
                 cancel_token,
+                force=force,
             ).items()
         }
 
@@ -254,7 +299,6 @@ class PackageManager:
             version="1.0.0",
             description="A new training pack for Muninn.",
             entrypoint="plugin:Plugin",
-            api_version="1",
         )
         with open(
             os.path.join(pack_dir, "manifest.json"),
@@ -267,11 +311,11 @@ class PackageManager:
 
 from typing import ClassVar
 
-from muninn.core.helpers import DataPlugin, QuestionType
+from muninn.core.helpers import DataPlugin, QuestionTypeSpec
 
 
 class Plugin(DataPlugin):
-    QUESTION_TYPES: ClassVar[list[QuestionType]] = [
+    QUESTION_TYPES: ClassVar[list[QuestionTypeSpec]] = [
         # Define question directions here.
     ]
 

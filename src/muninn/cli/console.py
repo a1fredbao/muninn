@@ -8,6 +8,7 @@ from rich.console import Console
 from rich.markup import escape
 from rich.table import Table
 
+from ..domain import TrainingGroup
 from ..services.manifest import PackSummary
 from ..services.package_manager import PackageProgress, UpgradeResult
 
@@ -88,3 +89,16 @@ class ConsolePresenter:
                 self.warning(result.error or f"Skipped {result.pack_id}.")
             else:
                 self.error(result.error or f"Failed to upgrade {result.pack_id}.")
+
+    def groups(self, groups: list[TrainingGroup]) -> None:
+        if not groups:
+            self.stdout.print("No training groups saved. Open Muninn and press 'g'.")
+            return
+        table = Table(title=f"Training Groups ({len(groups)})")
+        table.add_column("ID", style="cyan", no_wrap=True)
+        table.add_column("Name")
+        table.add_column("Question Types", justify="right")
+        for group in groups:
+            enabled = sum(1 for selection in group.selections if selection.enabled)
+            table.add_row(group.id, escape(group.name), str(enabled))
+        self.stdout.print(table)

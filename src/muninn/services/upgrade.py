@@ -43,6 +43,8 @@ class UpgradeService:
         pack_id: str,
         progress: ProgressCallback | None = None,
         cancel_token: CancellationToken | None = None,
+        *,
+        force: bool = False,
     ) -> UpgradeResult:
         manifest_path = self.packs_dir / pack_id / "manifest.json"
         if not manifest_path.exists():
@@ -77,6 +79,7 @@ class UpgradeService:
 
         try:
             newer = is_newer(remote_manifest.version, current_version)
+            same_version = remote_manifest.version == current_version
         except ValueError as exc:
             message = str(exc)
             emit(progress, message)
@@ -88,7 +91,7 @@ class UpgradeService:
                 error=message,
             )
 
-        if not newer:
+        if not newer and not same_version and not force:
             emit(progress, f"Pack '{pack_id}' ({current_version}) is up to date.")
             return UpgradeResult(
                 pack_id=pack_id,
@@ -97,13 +100,15 @@ class UpgradeService:
                 remote_version=remote_manifest.version,
             )
 
-        emit(
-            progress,
-            f"Upgrading '{pack_id}': {current_version} -> {remote_manifest.version}",
-        )
+        emit(progress, f"Checking pack '{pack_id}' for content changes.")
         source_arg = remove_source_prefix(source)
         try:
-            self.installer.install(source_arg, progress, cancel_token)
+            install_result = self.installer.install(
+                source_arg,
+                progress,
+                cancel_token,
+                force=force,
+            )
         except OperationCancelled:
             raise
         except Exception as exc:  # noqa: BLE001
@@ -113,6 +118,14 @@ class UpgradeService:
                 current_version=current_version,
                 remote_version=remote_manifest.version,
                 error=str(exc),
+            )
+        if not install_result.changed:
+            emit(progress, f"Pack '{pack_id}' is already up to date.")
+            return UpgradeResult(
+                pack_id=pack_id,
+                status="current",
+                current_version=current_version,
+                remote_version=remote_manifest.version,
             )
         return UpgradeResult(
             pack_id=pack_id,
@@ -125,6 +138,8 @@ class UpgradeService:
         self,
         progress: ProgressCallback | None = None,
         cancel_token: CancellationToken | None = None,
+        *,
+        force: bool = False,
     ) -> dict[str, UpgradeResult]:
         results: dict[str, UpgradeResult] = {}
         for summary in self.installer.list_summaries():
@@ -140,6 +155,7 @@ class UpgradeService:
                     summary.pack_id,
                     progress,
                     cancel_token,
+                    force=force,
                 )
             except OperationCancelled:
                 raise

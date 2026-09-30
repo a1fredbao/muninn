@@ -2,10 +2,34 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import NewType
 
 ProblemId = NewType("ProblemId", str)
+PackKey = NewType("PackKey", str)
+QuestionTypeKey = NewType("QuestionTypeKey", str)
+
+
+@dataclass(frozen=True, slots=True)
+class ProblemRef:
+    """A problem uniquely identified across packs and question types."""
+
+    key: ProblemId
+    pack_id: str
+    pack_key: PackKey
+    question_type_id: str
+    question_type_key: QuestionTypeKey
+    local_problem_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class ProblemMetadata:
+    """Optional scheduling metadata supplied by a question type."""
+
+    tags: tuple[str, ...] = ()
+    difficulty: float | None = None
+    estimated_seconds: float | None = None
+    data: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +54,42 @@ class ProblemStats:
             "total_count": self.total_count,
             "total_ac_time": self.total_ac_time,
         }
+
+
+@dataclass(frozen=True, slots=True)
+class SchedulingContext:
+    """Stable context supplied to a scheduling policy."""
+
+    selection_weight: float
+    metadata: ProblemMetadata
+
+
+@dataclass(frozen=True, slots=True)
+class SchedulingCandidate:
+    """A scheduler candidate composed from host and plugin-owned data."""
+
+    problem: ProblemRef
+    stats: ProblemStats
+    context: SchedulingContext
+
+
+@dataclass(frozen=True, slots=True)
+class GroupSelection:
+    """One selected question type inside a training group."""
+
+    pack_key: PackKey
+    question_type_key: QuestionTypeKey
+    weight: float = 1.0
+    enabled: bool = True
+
+
+@dataclass(frozen=True, slots=True)
+class TrainingGroup:
+    """A persisted, named collection of question types."""
+
+    id: str
+    name: str
+    selections: tuple[GroupSelection, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

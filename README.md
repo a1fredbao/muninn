@@ -50,6 +50,8 @@ muninn run muninn-chemistry-plugin
 | `muninn list`                | List installed packs in the traditional CLI.                  |
 | `muninn run <pack_id>`       | Open a Textual training session for one pack.                 |
 | `muninn new <name>`          | Generate a plugin template.                                   |
+| `muninn group list`          | List saved training groups.                                   |
+| `muninn group run <group>`   | Open a saved training group.                                  |
 
 In the Textual library:
 
@@ -61,6 +63,9 @@ In the Textual library:
 | `Shift+U` | Upgrade all packs                           |
 | `d`       | Uninstall the selected pack                 |
 | `r`       | Refresh metadata                            |
+| `g`       | Open the training group builder             |
+| `/`       | Search packs, groups, and question types    |
+| `Ctrl+T`  | Search and change the Textual theme         |
 | `Ctrl+C`  | Quit the application                        |
 | `Ctrl+P`  | Open the command palette                    |
 
@@ -69,6 +74,10 @@ newline. `Command+Enter` also inserts a newline in terminals that forward
 the Command modifier to the application. The answer field grows with its
 contents, then scrolls internally when it reaches half of the available
 session height.
+
+A training group combines selected question types from any number of
+installed packs. Group selections and the active theme are stored in
+`~/.muninn/config.json`.
 
 ## Write a Plugin
 

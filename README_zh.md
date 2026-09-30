@@ -50,6 +50,8 @@ muninn run muninn-chemistry-plugin
 | `muninn list`                | 使用传统 CLI 列出已安装的训练包。                          |
 | `muninn run <pack_id>`       | 直接进入指定训练包的 Textual 训练页面。                    |
 | `muninn new <name>`          | 生成插件开发模板。                                         |
+| `muninn group list`          | 列出已保存的训练组。                                       |
+| `muninn group run <group>`   | 打开指定的训练组。                                         |
 
 Textual 主页面快捷键：
 
@@ -61,12 +63,18 @@ Textual 主页面快捷键：
 | `Shift+U` | 升级全部训练包           |
 | `d`       | 卸载选中的训练包         |
 | `r`       | 刷新 metadata            |
+| `g`       | 打开训练组构建器         |
+| `/`       | 搜索训练包、训练组和题目类型 |
+| `Ctrl+T`  | 搜索并切换 Textual 主题  |
 | `Ctrl+C`  | 退出应用                 |
 | `Ctrl+P`  | 打开命令面板             |
 
 答题时按 `Enter` 提交答案，按 `Ctrl+Enter` 换行。若终端会将 Command
 修饰键传递给应用，`Command+Enter` 也可以换行。答案输入框会随内容自动
 增高，达到训练页面可用高度的一半后改为内部滚动。
+
+训练组可以组合任意多个训练包中的题目类型。训练组选择和当前主题保存在
+`~/.muninn/config.json`。
 
 ## 开发插件
 

@@ -1,30 +1,32 @@
-"""Tests for session orchestration and async plugin hooks."""
+"""Tests for multi-question-type training sessions."""
 
 import asyncio
 import time
 from pathlib import Path
 
-from muninn.core.state import StateManager
 from muninn.plugin_api import BaseTrainingPlugin
 from muninn.services.manifest import PackManifest
 from muninn.services.plugin_loader import (
     InProcessPluginAdapter,
     LoadedPlugin,
 )
-from muninn.services.training_session import TrainingSession
+from muninn.services.training_session import QuestionRoute, TrainingSession
 
 
-class _Plugin(BaseTrainingPlugin):
+class _QuestionType:
+    key = "questions"
+    label = "Questions"
+    description = "Test question type"
+
     def __init__(self, matcher, problem_ids=None):
         self.matcher = matcher
         self.ids = problem_ids or ["1"]
-        super().__init__("")
-
-    def load_data(self):
-        return None
 
     def get_all_problem_ids(self):
         return self.ids
+
+    def describe_problem(self, problem_id):
+        del problem_id
 
     def render_statement(self, problem_id):
         return f"Question {problem_id}"
@@ -34,6 +36,19 @@ class _Plugin(BaseTrainingPlugin):
 
     def get_expected_display(self, problem_id):
         return "1"
+
+    def get_expand_info(self, problem_id):
+        del problem_id
+        return ""
+
+
+class _Plugin(BaseTrainingPlugin):
+    def __init__(self, matcher, problem_ids=None):
+        self.question_type = _QuestionType(matcher, problem_ids)
+        super().__init__("")
+
+    def get_question_types(self):
+        return [self.question_type]
 
 
 def _adapter(plugin: BaseTrainingPlugin, pack_id: str = "test"):
@@ -46,7 +61,7 @@ def _adapter(plugin: BaseTrainingPlugin, pack_id: str = "test"):
             name=pack_id,
             version="1.0.0",
             entrypoint="plugin:Plugin",
-            api_version="1",
+            api_version="2",
         ),
         entrypoint="plugin:Plugin",
         environment={},
@@ -55,11 +70,16 @@ def _adapter(plugin: BaseTrainingPlugin, pack_id: str = "test"):
 
 
 async def _session(plugin: BaseTrainingPlugin, tmp_path, pack_id="test"):
-    store = StateManager(pack_id, str(tmp_path / "states"))
+    adapter = _adapter(plugin, pack_id)
     return await TrainingSession.create(
-        pack_id,
-        _adapter(plugin, pack_id),
-        store,
+        [
+            QuestionRoute(
+                pack_id=pack_id,
+                question_type_id=plugin.question_type.key,
+                plugin=adapter,
+            )
+        ],
+        state_dir=str(tmp_path / "states"),
     )
 
 
@@ -72,15 +92,16 @@ def test_sync_plugin_judging_keeps_event_loop_responsive(tmp_path):
 
     async def exercise():
         ticks = 0
-        task = asyncio.create_task(session.submit_answer("1", "1", 0.25))
+        problem_id = session.next_problem()
+        assert problem_id is not None
+        task = asyncio.create_task(session.submit_answer(problem_id, "1", 0.25))
         while not task.done():
             await asyncio.sleep(0.01)
             ticks += 1
         assert await task
         return ticks
 
-    ticks = asyncio.run(exercise())
-    assert ticks >= 5
+    assert asyncio.run(exercise()) >= 5
     session.close()
 
 
@@ -90,10 +111,12 @@ def test_async_plugin_is_awaited(tmp_path):
         return user_input == problem_id
 
     plugin = _Plugin(lambda problem_id, user_input: False)
-    plugin.check_answer = async_match
+    plugin.question_type.matcher = async_match
     session = asyncio.run(_session(plugin, tmp_path, "async"))
+    problem_id = session.next_problem()
+    assert problem_id is not None
 
-    assert asyncio.run(session.submit_answer("1", "1", 0.1))
+    assert asyncio.run(session.submit_answer(problem_id, "1", 0.1))
     session.close()
 
 
@@ -105,10 +128,11 @@ def test_session_accumulates_stats_after_judging(tmp_path):
             "stats",
         )
     )
+    problem_id = session.next_problem()
+    assert problem_id is not None
+    assert asyncio.run(session.submit_answer(problem_id, "1", 1.5))
 
-    assert asyncio.run(session.submit_answer("1", "1", 1.5))
     stats = session.stats()
-
     assert stats.total_count == 1
     assert stats.ac_count == 1
     assert stats.distinct_ac == 1
@@ -117,7 +141,7 @@ def test_session_accumulates_stats_after_judging(tmp_path):
     session.close()
 
 
-def test_skip_problem_removes_it_once_and_updates_total(tmp_path):
+def test_skip_problem_removes_it_from_session(tmp_path):
     plugin = _Plugin(lambda problem_id, user_input: True, ["1", "2"])
     session = asyncio.run(_session(plugin, tmp_path, "skip"))
     problem_id = session.next_problem()
@@ -132,30 +156,4 @@ def test_skip_problem_removes_it_once_and_updates_total(tmp_path):
 
     assert problem_id not in remaining
     assert session.stats().total_problems == 1
-    session.close()
-
-
-def test_session_migrates_legacy_problem_progress(tmp_path):
-    class MigratingPlugin(_Plugin):
-        def get_legacy_problem_id_map(self):
-            return {"0__typeA": "q1::typeA"}
-
-    store = StateManager("migrate", str(tmp_path / "states"))
-    store.update_stats("0__typeA", is_ac=True, time_spent=2.0)
-    plugin = MigratingPlugin(
-        lambda problem_id, user_input: True,
-        ["q1::typeA"],
-    )
-    session = asyncio.run(
-        TrainingSession.create(
-            "migrate",
-            _adapter(plugin, "migrate"),
-            store,
-        )
-    )
-
-    stats = session.stats()
-    assert stats.total_count == 1
-    assert stats.ac_count == 1
-    assert stats.avg_time == 2.0
     session.close()

@@ -1,3 +1,7 @@
+"""Reusable helpers for data-driven training plugins."""
+
+from __future__ import annotations
+
 import csv
 import json
 import os
@@ -6,24 +10,18 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, ClassVar
 
-from ..plugin_api import BaseTrainingPlugin
-
-# ---------------------------------------------------------------------------
-# Matchers – factory functions for reusable answer-checking logic
-# ---------------------------------------------------------------------------
+from ..domain import ProblemMetadata
+from ..plugin_api import (
+    BaseTrainingPlugin,
+    coerce_problem_metadata,
+)
 
 
 class Matchers:
-    """Built-in matcher factories.
-
-    Each classmethod returns a ``(data_item: dict, user_input: str) -> bool``
-    callable, suitable for use as a ``QuestionType.matcher``.
-    """
+    """Built-in matcher factories."""
 
     @staticmethod
     def exact(key: str):
-        """Exact match after stripping whitespace."""
-
         def match(data_item: dict, user_input: str) -> bool:
             return user_input.strip() == str(data_item[key]).strip()
 
@@ -31,8 +29,6 @@ class Matchers:
 
     @staticmethod
     def exact_integer(key: str):
-        """Extract digits from the user input and compare numerically."""
-
         def match(data_item: dict, user_input: str) -> bool:
             digits = re.sub(r"\D", "", user_input)
             return digits == str(data_item[key])
@@ -41,8 +37,6 @@ class Matchers:
 
     @staticmethod
     def case_insensitive(key: str):
-        """Case-insensitive match after stripping whitespace."""
-
         def match(data_item: dict, user_input: str) -> bool:
             return user_input.strip().lower() == str(data_item[key]).strip().lower()
 
@@ -50,9 +44,6 @@ class Matchers:
 
     @staticmethod
     def chinese_symbol_pair(key1: str, key2: str):
-        """Match "中文+符号" or "符号+中文" in either order, ignoring
-        whitespace and case (for the Latin part)."""
-
         def match(data_item: dict, user_input: str) -> bool:
             val1 = str(data_item[key1]).strip()
             val2 = str(data_item[key2]).strip()
@@ -63,152 +54,129 @@ class Matchers:
 
     @staticmethod
     def any_order(*keys: str):
-        """Match when all field values appear somewhere in the input,
-        ignoring non-alphanumeric characters and case."""
-
         def match(data_item: dict, user_input: str) -> bool:
             clean_input = re.sub(r"[^a-zA-Z0-9]", "", user_input).upper()
             values = [
-                re.sub(r"[^a-zA-Z0-9]", "", str(data_item[k])).upper() for k in keys
+                re.sub(r"[^a-zA-Z0-9]", "", str(data_item[key])).upper() for key in keys
             ]
-            return all(v in clean_input for v in values)
+            return all(value in clean_input for value in values)
 
         return match
 
     @staticmethod
     def custom(fn: Callable[[dict, str], bool]):
-        """Pass-through for a fully custom matcher function."""
         return fn
 
 
-# ---------------------------------------------------------------------------
-# QuestionType – a reusable question "direction"
-# ---------------------------------------------------------------------------
+@dataclass(slots=True)
+class QuestionTypeSpec:
+    """Declarative definition used by :class:`DataPlugin`."""
 
-
-@dataclass
-class QuestionType:
-    """Encapsulates one question direction: how to render the statement,
-    how to render the expected answer, and how to check correctness."""
-
+    key: str
     label: str
     statement: Callable[[dict], str]
     answer: Callable[[dict], str]
     matcher: Callable[[dict, str], bool]
-    key: str | None = None
+    description: str = ""
+    expand: Callable[[dict], str] | None = None
+    metadata: Callable[[dict], ProblemMetadata | dict[str, object] | None] | None = None
 
-    @property
-    def stable_key(self) -> str:
-        return self.key or self.label
+    def __post_init__(self) -> None:
+        if not self.key.strip():
+            raise ValueError("QuestionTypeSpec.key cannot be empty")
+        if not self.label.strip():
+            raise ValueError("QuestionTypeSpec.label cannot be empty")
 
 
-# ---------------------------------------------------------------------------
-# DataPlugin – base class for record × QuestionType plugins
-# ---------------------------------------------------------------------------
+class _DataQuestionType:
+    def __init__(
+        self,
+        spec: QuestionTypeSpec,
+        records: list[dict[str, Any]],
+        record_id: Callable[[dict[str, Any], int], str],
+        record_filter: Callable[[dict[str, Any], QuestionTypeSpec], bool],
+    ) -> None:
+        self.spec = spec
+        self.key = spec.key
+        self.label = spec.label
+        self.description = spec.description
+        self._problems: dict[str, dict[str, Any]] = {}
+        for index, record in enumerate(records):
+            if not record_filter(record, spec):
+                continue
+            problem_id = str(record_id(record, index))
+            if problem_id in self._problems:
+                raise ValueError(
+                    f"Duplicate problem ID '{problem_id}' in question type '{self.key}'"
+                )
+            self._problems[problem_id] = record
+
+    def get_all_problem_ids(self) -> list[str]:
+        return list(self._problems)
+
+    def describe_problem(self, problem_id: str) -> ProblemMetadata:
+        record = self._problems[problem_id]
+        if self.spec.metadata is None:
+            return ProblemMetadata()
+        return coerce_problem_metadata(self.spec.metadata(record))
+
+    def render_statement(self, problem_id: str) -> str:
+        return f"【{self.label}】 {self.spec.statement(self._problems[problem_id])}"
+
+    def check_answer(self, problem_id: str, user_input: str) -> bool:
+        return self.spec.matcher(self._problems[problem_id], user_input.strip())
+
+    def get_expected_display(self, problem_id: str) -> str:
+        return self.spec.answer(self._problems[problem_id])
+
+    def get_expand_info(self, problem_id: str) -> str:
+        if self.spec.expand is None:
+            return ""
+        return self.spec.expand(self._problems[problem_id])
 
 
 class DataPlugin(BaseTrainingPlugin):
-    """Higher-level plugin for "entity + multi-question-direction" scenarios.
+    """Build multiple independently selectable question types from records."""
 
-    Subclasses supply:
-    - ``QUESTION_TYPES``: a list of ``QuestionType`` instances.
-    - ``load_records()``: returns a list of data dicts.
-    - (optional) ``filter(record, q_type)``: return False to skip a
-      particular record × question-type combination.
-
-    ``DataPlugin`` auto-generates problem IDs, routes all five abstract
-    methods, and exposes ``_resolve(problem_id) -> (record, q_type)`` for
-    subclasses that need custom ``get_expand_info`` or similar overrides.
-    """
-
-    QUESTION_TYPES: ClassVar[list[QuestionType]] = []
+    QUESTION_TYPES: ClassVar[list[QuestionTypeSpec]] = []
     RECORD_ID_FIELD: ClassVar[str] = "id"
 
     def record_id(self, record: dict[str, Any], index: int) -> str:
-        """Return a stable ID for a record.
-
-        New packs should include an ``id`` field. The index fallback keeps
-        old packs loadable while making the migration requirement explicit.
-        """
-
         value = record.get(self.RECORD_ID_FIELD)
         if value is not None and str(value).strip():
             return str(value).strip()
         return f"legacy-{index}"
 
-    def load_data(self) -> None:
-        self._records = self.load_records()
-        self._problem_map: dict[str, tuple[dict, QuestionType]] = {}
-        self._legacy_problem_map: dict[str, str] = {}
-        self._legacy_problem_ids: dict[str, str] = {}
-        for i, record in enumerate(self._records):
-            record_id = self.record_id(record, i)
-            for qt in self.QUESTION_TYPES:
-                if self.filter(record, qt):
-                    pid = f"{record_id}::{qt.stable_key}"
-                    if pid in self._problem_map:
-                        raise ValueError(f"Duplicate problem ID: {pid}")
-                    self._problem_map[pid] = (record, qt)
-                    legacy_pid = f"{i}__{qt.label}"
-                    self._legacy_problem_map[pid] = legacy_pid
-                    self._legacy_problem_ids[legacy_pid] = pid
-
     def load_records(self) -> list[dict[str, Any]]:
-        """Override to return a list of data records from workspace_dir."""
         raise NotImplementedError
 
-    def filter(self, record: dict, q_type: QuestionType) -> bool:
-        """Override to exclude some record × question-type combos."""
+    def filter(self, record: dict, q_type: QuestionTypeSpec) -> bool:
+        """Deprecated compatibility filter; prefer defining clean records."""
+
+        del record, q_type
         return True
 
-    def _resolve(self, problem_id: str) -> tuple[dict, QuestionType]:
-        return self._problem_map[problem_id]
+    def load_data(self) -> None:
+        self._records = self.load_records()
+        self._question_types = [
+            _DataQuestionType(
+                spec,
+                self._records,
+                self.record_id,
+                self.filter,
+            )
+            for spec in self.QUESTION_TYPES
+        ]
 
-    # -- BaseTrainingPlugin interface -----------------------------------------
-
-    def get_all_problem_ids(self) -> list[str]:
-        return list(self._problem_map.keys())
-
-    def get_legacy_problem_id_map(self) -> dict[str, str]:
-        """Map persisted legacy IDs to their new stable IDs."""
-
-        return dict(self._legacy_problem_ids)
-
-    def render_statement(self, problem_id: str) -> str:
-        record, qt = self._resolve(problem_id)
-        return f"【{qt.label}】 {qt.statement(record)}"
-
-    def check_answer(self, problem_id: str, user_input: str) -> bool:
-        record, qt = self._resolve(problem_id)
-        return qt.matcher(record, user_input.strip())
-
-    def get_expected_display(self, problem_id: str) -> str:
-        record, qt = self._resolve(problem_id)
-        return qt.answer(record)
-
-    def get_expand_info(self, problem_id: str) -> str:
-        return ""
-
-
-# ---------------------------------------------------------------------------
-# FlashcardPlugin – zero-boilerplate front/back flashcard
-# ---------------------------------------------------------------------------
+    def get_question_types(self):
+        return list(self._question_types)
 
 
 class FlashcardPlugin(DataPlugin):
-    """Plug-and-play flashcard-style plugin.
-
-    Point ``DATA_FILE`` at a CSV (columns ``front``, ``back``) or JSON
-    (list of ``{"front": ..., "back": ...}`` objects) in the workspace
-    directory.  All five plugin methods are handled automatically.
-
-    Example::
-
-        class Plugin(FlashcardPlugin):
-            DATA_FILE = "words.csv"
-    """
+    """Zero-boilerplate front/back flashcards."""
 
     DATA_FILE: str = ""
+    EXPAND_FIELD: str | None = None
     RECORD_ID_FIELD: ClassVar[str] = "id"
 
     def record_id(self, record: dict[str, Any], index: int) -> str:
@@ -218,34 +186,30 @@ class FlashcardPlugin(DataPlugin):
                 return str(value).strip()
         return f"legacy-{index}"
 
-    def load_data(self) -> None:
+    def load_records(self) -> list[dict[str, Any]]:
         path = os.path.join(self.workspace_dir, self.DATA_FILE)
         if path.endswith(".csv"):
-            with open(path, encoding="utf-8", newline="") as f:
-                self._records = list(csv.DictReader(f))
-        elif path.endswith(".json"):
-            with open(path, encoding="utf-8") as f:
-                self._records = json.load(f)
-        else:
-            raise ValueError(
-                f"Unsupported DATA_FILE format: {self.DATA_FILE!r}. "
-                "Expected .csv or .json"
-            )
-
-        qt = QuestionType(
-            label="闪卡",
-            statement=lambda r: str(r.get("front", "")),
-            answer=lambda r: str(r.get("back", "")),
-            matcher=Matchers.exact("back"),
+            with open(path, encoding="utf-8", newline="") as file:
+                return list(csv.DictReader(file))
+        if path.endswith(".json"):
+            with open(path, encoding="utf-8") as file:
+                return json.load(file)
+        raise ValueError(
+            f"Unsupported DATA_FILE format: {self.DATA_FILE!r}. Expected .csv or .json"
         )
 
-        self._problem_map: dict[str, tuple[dict, QuestionType]] = {}
-        self._legacy_problem_map: dict[str, str] = {}
-        self._legacy_problem_ids: dict[str, str] = {}
-        for i, record in enumerate(self._records):
-            pid = self.record_id(record, i)
-            if pid in self._problem_map:
-                raise ValueError(f"Duplicate flashcard ID: {pid}")
-            self._problem_map[pid] = (record, qt)
-            self._legacy_problem_map[pid] = str(i)
-            self._legacy_problem_ids[str(i)] = pid
+    def load_data(self) -> None:
+        spec = QuestionTypeSpec(
+            key="flashcard",
+            label="闪卡",
+            statement=lambda record: str(record.get("front", "")),
+            answer=lambda record: str(record.get("back", "")),
+            matcher=Matchers.exact("back"),
+            expand=(
+                (lambda record: str(record.get(self.EXPAND_FIELD or "", "")))
+                if self.EXPAND_FIELD
+                else None
+            ),
+        )
+        self.QUESTION_TYPES = [spec]
+        super().load_data()

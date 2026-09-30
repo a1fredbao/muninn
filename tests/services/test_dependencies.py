@@ -21,7 +21,7 @@ def _write_manifest(path: Path, pack_id: str, version: str = "1.0.0") -> None:
         name=pack_id,
         version=version,
         entrypoint="plugin:Plugin",
-        api_version="1",
+        api_version="2",
     )
     (path / "manifest.json").write_text(
         __import__("json").dumps(manifest.to_dict()),
