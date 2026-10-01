@@ -6,6 +6,12 @@
       "sourceType": "github",
       "skillPath": "skill/SKILL.md",
       "computedHash": "ca19865c5b4dc9984a7dc2dd813de0f241ac7d212f853250e3a61df19433ef06"
+    },
+    "textual-tui-docs": {
+      "source": "a1fredbao/textual-tui-docs",
+      "sourceType": "github",
+      "skillPath": "SKILL.md",
+      "computedHash": "76b5249c62422a73ab2638a7cf8f0736fecfabcb204e63417cc3fea1b665d2f9"
     }
   }
 }
