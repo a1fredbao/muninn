@@ -41,33 +41,33 @@ muninn run muninn-chemistry-plugin
 
 ## Commands
 
-| Command                      |                                                               |
-| ---------------------------- | ------------------------------------------------------------- |
-| `muninn`                     | Open the Textual pack library and management UI.              |
-| `muninn install <source>`    | Install a pack (local dir, zip, GitHub URL, or `user/repo`).  |
-| `muninn uninstall <pack_id>` | Remove a pack.                                                |
-| `muninn upgrade [pack_id]`   | Upgrade one or all packs.                                     |
-| `muninn list`                | List installed packs in the traditional CLI.                  |
-| `muninn run <pack_id>`       | Open a Textual training session for one pack.                 |
-| `muninn new <name>`          | Generate a plugin template.                                   |
-| `muninn group list`          | List saved training groups.                                   |
-| `muninn group run <group>`   | Open a saved training group.                                  |
+| Command                      |                                                              |
+| ---------------------------- | ------------------------------------------------------------ |
+| `muninn`                     | Open the Textual pack library and management UI.             |
+| `muninn install <source>`    | Install a pack (local dir, zip, GitHub URL, or `user/repo`). |
+| `muninn uninstall <pack_id>` | Remove a pack.                                               |
+| `muninn upgrade [pack_id]`   | Upgrade one or all packs.                                    |
+| `muninn list`                | List installed packs in the traditional CLI.                 |
+| `muninn run <pack_id>`       | Open a Textual training session for one pack.                |
+| `muninn new <name>`          | Generate a plugin template.                                  |
+| `muninn group list`          | List saved training groups.                                  |
+| `muninn group run <group>`   | Open a saved training group.                                 |
 
 In the Textual library:
 
-| Key       | Action                                      |
-| --------- | ------------------------------------------- |
-| `Enter`   | Start the selected pack                     |
-| `i`       | Install a pack                              |
-| `u`       | Upgrade the selected pack                   |
-| `Shift+U` | Upgrade all packs                           |
-| `d`       | Uninstall the selected pack                 |
-| `r`       | Refresh metadata                            |
-| `g`       | Open the training group builder             |
-| `/`       | Search packs, groups, and question types    |
-| `Ctrl+T`  | Search and change the Textual theme         |
-| `Ctrl+C`  | Quit the application                        |
-| `Ctrl+P`  | Open the command palette                    |
+| Key       | Action                                   |
+| --------- | ---------------------------------------- |
+| `Enter`   | Start the selected pack                  |
+| `i`       | Install a pack                           |
+| `u`       | Upgrade the selected pack                |
+| `Shift+U` | Upgrade all packs                        |
+| `d`       | Uninstall the selected pack              |
+| `r`       | Refresh metadata                         |
+| `g`       | Open the training group builder          |
+| `/`       | Search packs, groups, and question types |
+| `Ctrl+T`  | Search and change the Textual theme      |
+| `Ctrl+C`  | Quit the application                     |
+| `Ctrl+P`  | Open the command palette                 |
 
 While answering, `Enter` submits the answer and `Ctrl+Enter` inserts a
 newline. `Command+Enter` also inserts a newline in terminals that forward
@@ -81,4 +81,4 @@ installed packs. Group selections and the active theme are stored in
 
 ## Write a Plugin
 
-See full documentation at: [a1fredbao.github.io/muninn](https://a1fredbao.github.io/muninn/)
+See full documentation at: [muninn.alfredbao.cn](https://muninn.alfredbao.cn/) or [the deepwiki page of Muninn](https://deepwiki.com/a1fredbao/muninn/).
