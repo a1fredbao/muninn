@@ -105,19 +105,22 @@ def main() -> None:
 
     # 1. Update pyproject.toml and src/muninn/__init__.py:__version__
     write_version(new)
-    print(f"✅ Updated {PYPROJECT.relative_to(ROOT)}")
+    print(
+        f"✅ Updated {PYPROJECT.relative_to(ROOT)} and {MUNINN_INIT.relative_to(ROOT)}"
+    )
 
     # 2. Regenerate lockfile so uv.lock records the new version
     run(["uv", "lock"])
     print(f"✅ Regenerated {LOCKFILE.relative_to(ROOT)}")
 
-    # 3. Commit both pyproject.toml and uv.lock
+    # 3. Commit pyproject.toml, uv.lock and src/muninn/__init__.py
     run(
         [
             "git",
             "add",
             str(PYPROJECT.relative_to(ROOT)),
             str(LOCKFILE.relative_to(ROOT)),
+            str(MUNINN_INIT.relative_to(ROOT)),
         ]
     )
     run(["git", "commit", "-m", f"chore: bump version to {new}"])
