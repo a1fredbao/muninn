@@ -18,6 +18,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 PYPROJECT = ROOT / "pyproject.toml"
+MUNINN_INIT = ROOT / "src" / "muninn" / "__init__.py"
 LOCKFILE = ROOT / "uv.lock"
 VERSION_RE = re.compile(r'^(version\s*=\s*)"([^"]+)"', re.MULTILINE)
 
@@ -49,6 +50,14 @@ def write_version(new_version: str) -> None:
     if count != 1:
         sys.exit("❌ Expected exactly one version line in pyproject.toml.")
     PYPROJECT.write_text(updated, encoding="utf-8")
+
+    text = MUNINN_INIT.read_text(encoding="utf-8")
+    updated, count = re.subn(
+        r'(__version__\s*=\s*)"([^"]+)"', f'\\1"{new_version}"', text
+    )
+    if count != 1:
+        sys.exit("❌ Expected exactly one __version__ line in src/muninn/__init__.py.")
+    MUNINN_INIT.write_text(updated, encoding="utf-8")
 
 
 def run(cmd: list[str], **kwargs) -> None:
@@ -94,7 +103,7 @@ def main() -> None:
         print("(dry run — no files changed)")
         return
 
-    # 1. Update pyproject.toml
+    # 1. Update pyproject.toml and src/muninn/__init__.py:__version__
     write_version(new)
     print(f"✅ Updated {PYPROJECT.relative_to(ROOT)}")
 

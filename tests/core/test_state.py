@@ -6,7 +6,8 @@ import tempfile
 
 import pytest
 
-from src.core.state import StateManager
+from muninn.core.state import StateManager
+from muninn.domain import AttemptOutcome, ProblemId
 
 
 class TestStateManager:
@@ -72,3 +73,28 @@ class TestStateManager:
         assert b["total_count"] == 1
         assert a["ac_count"] == 1
         assert b["ac_count"] == 0
+
+    def test_record_attempt_returns_updated_stats_atomically(self, state_manager):
+        stats = state_manager.record_attempt(
+            AttemptOutcome(
+                problem_id=ProblemId("p1"),
+                user_input="answer",
+                is_correct=True,
+                time_spent=1.25,
+            )
+        )
+        assert stats.ac_count == 1
+        assert stats.total_count == 1
+        assert stats.total_ac_time == 1.25
+
+    def test_migrates_and_merges_legacy_problem_ids(self, state_manager):
+        state_manager.update_stats("legacy", is_ac=True, time_spent=1.0)
+        state_manager.update_stats("stable", is_ac=False, time_spent=2.0)
+
+        assert state_manager.migrate_problem_ids({"legacy": "stable"}) == 1
+
+        stats = state_manager.get_problem_stats(ProblemId("stable"))
+        assert stats.ac_count == 1
+        assert stats.total_count == 2
+        assert stats.total_ac_time == 1.0
+        assert state_manager.get_stats("legacy")["total_count"] == 0

@@ -1,28 +1,32 @@
 # DataPlugin
 
-`DataPlugin` is a higher-level wrapper around `BaseRecitePlugin` designed
-for the common pattern *"a set of records × a set of question
-directions"*.  Declare your question types and Muninn generates all
-problem variants automatically.
+`DataPlugin` is a higher-level wrapper around `BaseTrainingPlugin` designed
+for the common pattern "a set of records multiplied by a set of question
+directions". Declare your question types and Muninn generates all problem
+variants automatically.
 
 ## Quick Example
 
-``` python
-import os, json
+```python
+import json
+import os
 from typing import ClassVar
-from core.helpers import DataPlugin, QuestionType, Matchers
+
+from muninn.core.helpers import DataPlugin, Matchers, QuestionTypeSpec
 
 
 class Plugin(DataPlugin):
-    QUESTION_TYPES: ClassVar[list[QuestionType]] = [
-        QuestionType(
-            label="Symbol → Name",
+    QUESTION_TYPES: ClassVar[list[QuestionTypeSpec]] = [
+        QuestionTypeSpec(
+            key="symbol-to-name",
+            label="Symbol -> Name",
             statement=lambda el: f"Element: {el['sym']}",
             answer=lambda el: el["name"],
             matcher=Matchers.case_insensitive("name"),
         ),
-        QuestionType(
-            label="Name → Number",
+        QuestionTypeSpec(
+            key="name-to-number",
+            label="Name -> Number",
             statement=lambda el: f"Element: {el['name']}",
             answer=lambda el: str(el["num"]),
             matcher=Matchers.exact_integer("num"),
@@ -30,61 +34,68 @@ class Plugin(DataPlugin):
     ]
 
     def load_records(self) -> list:
-        with open(
-            os.path.join(self.workspace_dir, "elements.json"), encoding="utf-8"
-        ) as f:
-            return json.load(f)
+        path = os.path.join(self.workspace_dir, "elements.json")
+        with open(path, encoding="utf-8") as file:
+            return json.load(file)
 ```
 
-With 36 elements and 2 question types, this automatically produces 72
-problems — no manual ID generation, no dispatch tables.
+## QUESTION_TYPES
 
-## `QUESTION_TYPES`
+`QUESTION_TYPES` is a list of `QuestionTypeSpec` objects. Each represents one
+question direction.
 
-A list of [`QuestionType` objects](#questiontype).  Each represents one
-question direction (e.g. "show symbol, ask name").
+Use a stable `key` for persistence. The human-readable `label` may change
+without invalidating progress.
 
-## `load_records()`
+## load_records()
 
-Override to return a list of data dicts from your workspace directory.
-Each dict is passed to every `QuestionType`.
+Override `load_records()` to return a list of dictionaries from the
+workspace. Include a stable `id` field in each record.
 
-## `filter(record, q_type)`
+If the record uses another primary key, override `record_id()`:
 
-Optional.  Return `False` to skip a particular record × question-type
+```python
+def record_id(self, record: dict, index: int) -> str:
+    del index
+    return str(record["num"])
+```
+
+## filter(record, q_type)
+
+Optional. Return `False` to skip one record and question-direction
 combination.
 
-``` python
+```python
 def filter(self, record, q_type):
-    if q_type.label == "Position → Element":
-        return record["group"] != "0"  # skip noble gases
+    if q_type.key == "position-to-element":
+        return record["group"] != "0"
     return True
 ```
 
-## `_resolve(problem_id)`
-
-Returns `(record, QuestionType)` for a given problem ID.  Useful when
-overriding `get_expand_info()`:
-
-``` python
-def get_expand_info(self, problem_id: str) -> str:
-    el, qt = self._resolve(problem_id)
-    return f"{el['name']} — Period {el['period']}, Group {el['group']}"
-```
+`filter` is retained for early plugin compatibility, but new packs should
+normalize records before constructing question types. The host may remove
+this hook in a future plugin API version.
 
 ## Problem ID Format
 
-IDs are generated as `{record_index}__{question_label}`, e.g.
-`0__Symbol → Name`.  You generally don't need to interact with them
-directly — they're used internally by the scheduler and state manager.
+Each question type exposes `record_id` as its local problem ID. The host
+then hashes:
 
-## `QuestionType`
+```text
+SHA-256(pack_id, question_type_key, local_problem_id)
+```
 
-`QuestionType` is a dataclass that encapsulates one question direction:
+Reordering records must not change progress.
 
-| Field       | Type                  | Description                                                               |
-| ----------- | --------------------- | ------------------------------------------------------------------------- |
-| `label`     | `str`                 | Human-readable name, shown in the problem header.                         |
-| `statement` | `(dict) -> str`       | Function that renders the question text from a record.                    |
-| `answer`    | `(dict) -> str`       | Function that renders the expected answer from a record.                  |
-| `matcher`   | `(dict, str) -> bool` | Function that checks user input. Use [`Matchers`](matchers.md) factories. |
+## QuestionTypeSpec
+
+| Field       | Type                  | Description |
+| ----------- | --------------------- | ----------- |
+| `key`       | `str`                 | Stable persistence key. |
+| `label`     | `str`                 | Human-readable name shown in the question header. |
+| `description` | `str`               | Optional description shown in the group builder. |
+| `statement` | `(dict) -> str`       | Renders the question text. |
+| `answer`    | `(dict) -> str`       | Renders the expected answer. |
+| `matcher`   | `(dict, str) -> bool` | Checks user input. |
+| `expand`    | `(dict) -> str`       | Optional expansion shown after a correct answer. |
+| `metadata`  | `(dict) -> object`    | Optional scheduling metadata. |

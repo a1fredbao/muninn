@@ -11,7 +11,7 @@ full control.
 | ---------------------------------------- | ------------------------------------------------- |
 | [`FlashcardPlugin`](api/flashcard.md)    | Simple front/back cards (vocabulary, definitions) |
 | [`DataPlugin`](api/data-plugin.md)       | Structured data quizzed from multiple angles      |
-| [`BaseRecitePlugin`](api/base-plugin.md) | Full control over every aspect                    |
+| [`BaseTrainingPlugin`](api/base-training-plugin.md) | Full control over every aspect                    |
 
 ## Getting Started
 
@@ -38,7 +38,9 @@ my-pack/
     "name": "My Pack",
     "author": "Your Name",
     "version": "1.0.0",
-    "description": "A brief description."
+    "description": "A brief description.",
+    "entrypoint": "plugin:Plugin",
+    "api_version": "2"
 }
 ```
 
@@ -49,3 +51,16 @@ my-pack/
 | `author`      | No       |                                                |
 | `version`     | Yes      | SemVer.                                        |
 | `description` | No       |                                                |
+| `entrypoint`  | Yes      | `module:ClassName`, normally `plugin:Plugin`. |
+| `api_version` | Yes      | Current plugin API version is `2`.            |
+
+Plugins run in an isolated worker process. Each session gets its own
+process and can lazily import files beside `plugin.py` or packages from
+its own dependency environment.
+
+Each `QuestionType` is independently selectable in the training group
+builder. A plugin may expose any number of question types, and a session
+may combine question types from multiple installed packs.
+
+See [Training Groups](plugin-groups.md) for the composition and
+persistence model.

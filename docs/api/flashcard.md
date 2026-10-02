@@ -17,12 +17,15 @@ cat,猫
 Then write a 3-line plugin:
 
 ``` python
-from core.helpers import FlashcardPlugin
+from muninn.core.helpers import FlashcardPlugin
 
 
 class Plugin(FlashcardPlugin):
     DATA_FILE = "words.csv"
 ```
+
+Flashcards use `id`, then `front`, as their stable record key. Include
+an explicit `id` column when two cards can share the same front text.
 
 That's it.  `FlashcardPlugin` automatically:
 
@@ -39,15 +42,13 @@ That's it.  `FlashcardPlugin` automatically:
 
 ## Customisation
 
-Override `get_expand_info()` to show extra context on correct answers:
+Set `EXPAND_FIELD` to show another CSV or JSON field after a correct
+answer:
 
 ``` python
 class Plugin(FlashcardPlugin):
     DATA_FILE = "words.csv"
-
-    def get_expand_info(self, problem_id: str) -> str:
-        record, _ = self._resolve(problem_id)
-        return record.get("example", "")
+    EXPAND_FIELD = "example"
 ```
 
 ## File Layout

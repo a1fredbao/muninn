@@ -2,10 +2,11 @@
 
 ## `muninn install`
 
-Install a reciting pack.
+Install a training pack.
 
 ```bash
 muninn install <source>
+muninn install <source> --force
 ```
 
 `<source>` accepts:
@@ -21,17 +22,21 @@ muninn install <source>
 The pack is copied to `~/.muninn/packs/<pack_id>/`.  Installing the same
 `pack_id` again overwrites the previous version.
 
+Muninn stores a content hash in `manifest.json`. Reinstalling an
+unchanged pack is skipped. Use `--force` to reinstall it explicitly.
+
 Muninn records the installation source in the pack's `manifest.json` so
 that `muninn upgrade` knows where to check for updates later.
 
 ### Dependencies
 
 If a pack includes a `requirements.txt` at its root, Muninn creates an
-isolated virtual environment at `~/.muninn/venvs/<pack_id>/` and
-installs the declared packages there.  Each pack gets its own venv, so
+isolated virtual environment at
+`~/.muninn/venvs/<pack_id>/<version>/` and installs the declared
+packages there. Each pack session runs in its own worker process, so
 two packs can depend on different versions of the same library without
-conflict.  No manual `pip install` step is required — the next
-`muninn run` will find the installed packages automatically.
+conflict. No manual `pip install` step is required: the next
+`muninn run` starts the plugin in that environment automatically.
 
 This is designed for packs that need third-party libraries (e.g. `openai`
 for AI-powered answer checking, `requests` for fetching live data).  The
@@ -48,6 +53,9 @@ muninn upgrade
 
 # Upgrade a specific pack
 muninn upgrade <pack_id>
+
+# Force reinstall even when the content hash is unchanged
+muninn upgrade <pack_id> --force
 ```
 
 How it works:
@@ -60,6 +68,9 @@ How it works:
 Packs installed before Muninn 0.3.0 do not have a `source` field and
 cannot be upgraded — reinstall them with `muninn install` to enable
 upgrades.
+
+Upgrade checks both the version and the staged content hash. A content
+change with an unchanged version is reinstalled.
 
 ## `muninn uninstall`
 
@@ -83,7 +94,7 @@ muninn list
 
 ## `muninn run`
 
-Start a reciting session for a pack.
+Start a training session for a pack.
 
 ```bash
 muninn run <pack_id>
@@ -102,7 +113,7 @@ During a session:
 - Wait while Muninn shows `Judging...` when a plugin performs a slow
   synchronous or asynchronous answer check.
 - Press `Esc` to return to the pack library.
-- Press `Ctrl+C` to review the session summary and quit.
+- Press `Ctrl+C` to view the session summary and quit.
 - Press `Ctrl+Q` to show a reminder that `Ctrl+C` is now the quit
   shortcut.
 
@@ -112,6 +123,29 @@ uninstall, and refresh actions.  The install, upgrade, uninstall, list,
 and new subcommands continue to use the traditional CLI.
 Long-running management operations run in the background and provide a
 progress dialog with best-effort cancellation.
+
+## `muninn group`
+
+```bash
+muninn group list
+muninn group run <group_id_or_name>
+```
+
+Training groups are created and edited in the Textual group builder
+(`g` from the pack library). `group list` shows saved groups, and
+`group run` opens the selected group immediately.
+
+In the group builder:
+
+- `/` opens the Textual command palette with pack, group, and
+  question-type search results.
+- Selecting a question type with `Enter` toggles it.
+- Selecting a pack toggles all of its question types.
+- `Ctrl+S` saves the group.
+- `Ctrl+R` starts the current selection.
+
+The pack library also opens the command palette with `/`. Press `Ctrl+T`
+to search Textual themes; the selected theme is persisted automatically.
 
 ## `muninn new`
 

@@ -41,9 +41,9 @@ Muninn stores all user data under `~/.muninn/`:
 
 ``` bash
 ~/.muninn/
-├── packs/         # Installed reciting packs
+├── packs/         # Installed training packs
 │   └── chemistry/
-└── states/        # Learning progress (SQLite)
+└── states/        # Training progress (SQLite)
     └── chemistry.db
 ```
 
