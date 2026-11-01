@@ -176,9 +176,11 @@ class SessionScreen(Screen[None]):
                     )
                 except AnswerAcceptanceRequired as exc:
                     expected = await self.session.expected_answer(exc.problem_id)
+                    self.phase = "confirming"
                     accepted = await self.app.push_screen_wait(
                         AnswerAcceptanceDialog(exc.user_input, expected)
                     )
+                    self.phase = "judging"
                     if accepted is None:
                         self._restore_current_problem()
                         self._resolve_pending_navigation()
