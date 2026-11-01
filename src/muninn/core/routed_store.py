@@ -53,6 +53,23 @@ class RoutedProgressStore:
             )
         )
 
+    def get_answer_decision(
+        self,
+        problem_id: ProblemId,
+        answer_key: str,
+    ) -> bool | None:
+        store, local_id = self._route(problem_id)
+        return store.get_answer_decision(local_id, answer_key)
+
+    def record_answer_decision(
+        self,
+        problem_id: ProblemId,
+        answer_key: str,
+        accepted: bool,
+    ) -> None:
+        store, local_id = self._route(problem_id)
+        store.record_answer_decision(local_id, answer_key, accepted)
+
     def aggregate(self, problem_ids: list[ProblemId]) -> ProgressAggregate:
         ids_by_pack: dict[str, list[ProblemId]] = {}
         for problem_id in problem_ids:

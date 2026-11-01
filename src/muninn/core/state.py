@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import time
 
 from ..domain import AttemptOutcome, ProblemId, ProblemStats, ProgressAggregate
 
@@ -22,6 +23,15 @@ class StateManager:
                 ac_count INTEGER DEFAULT 0,
                 total_count INTEGER DEFAULT 0,
                 total_ac_time REAL DEFAULT 0.0
+            )
+        """)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS answer_decisions (
+                problem_id TEXT NOT NULL,
+                answer_key TEXT NOT NULL,
+                accepted INTEGER NOT NULL,
+                updated_at REAL NOT NULL,
+                PRIMARY KEY (problem_id, answer_key)
             )
         """)
         self.conn.commit()
@@ -91,6 +101,44 @@ class StateManager:
             total_count=row[1],
             total_ac_time=row[2],
         )
+
+    def get_answer_decision(
+        self,
+        problem_id: ProblemId,
+        answer_key: str,
+    ) -> bool | None:
+        row = self.conn.execute(
+            """
+            SELECT accepted
+            FROM answer_decisions
+            WHERE problem_id = ? AND answer_key = ?
+            """,
+            (problem_id, answer_key),
+        ).fetchone()
+        return None if row is None else bool(row[0])
+
+    def record_answer_decision(
+        self,
+        problem_id: ProblemId,
+        answer_key: str,
+        accepted: bool,
+    ) -> None:
+        with self.conn:
+            self.conn.execute(
+                """
+                INSERT INTO answer_decisions (
+                    problem_id,
+                    answer_key,
+                    accepted,
+                    updated_at
+                )
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(problem_id, answer_key) DO UPDATE SET
+                    accepted = excluded.accepted,
+                    updated_at = excluded.updated_at
+                """,
+                (problem_id, answer_key, int(accepted), time.time()),
+            )
 
     def update_stats(
         self,

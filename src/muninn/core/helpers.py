@@ -80,6 +80,7 @@ class QuestionTypeSpec:
     description: str = ""
     expand: Callable[[dict], str] | None = None
     metadata: Callable[[dict], ProblemMetadata | dict[str, object] | None] | None = None
+    allow_user_acceptance: bool = False
 
     def __post_init__(self) -> None:
         if not self.key.strip():
@@ -100,6 +101,7 @@ class _DataQuestionType:
         self.key = spec.key
         self.label = spec.label
         self.description = spec.description
+        self.allow_user_acceptance = spec.allow_user_acceptance
         self._problems: dict[str, dict[str, Any]] = {}
         for index, record in enumerate(records):
             if not record_filter(record, spec):

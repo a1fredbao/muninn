@@ -94,6 +94,12 @@ class QuestionType(Protocol):
     def get_expand_info(self, problem_id: str) -> PluginResult: ...
 
 
+class SupportsUserAcceptance(Protocol):
+    """Optional capability: ask the user to confirm a strict mismatch."""
+
+    allow_user_acceptance: bool
+
+
 class Plugin(Protocol):
     """The complete host/plugin contract.
 

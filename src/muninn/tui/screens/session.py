@@ -14,8 +14,15 @@ from textual.containers import Container, Vertical
 from textual.screen import Screen
 from textual.widgets import Footer, Header, LoadingIndicator, Static, TextArea
 
-from ...services.training_session import TrainingSession
-from .dialogs import JudgeErrorDialog, SessionSummaryDialog
+from ...domain import AttemptOutcome
+from ...services.training_session import (
+    AnswerAcceptanceRequired,
+    TrainingSession,
+)
+from .dialogs import (
+    JudgeErrorDialog,
+    SessionSummaryDialog,
+)
 
 
 class SessionScreen(Screen[None]):
@@ -24,6 +31,8 @@ class SessionScreen(Screen[None]):
     BINDINGS: ClassVar[list[BindingType]] = [
         Binding("escape", "leave", "Library", show=True),
         Binding("enter", "submit_answer", "Submit", show=True, priority=True),
+        Binding("y", "accept_answer", "Accept", show=False),
+        Binding("n", "reject_answer", "Reject", show=False),
         Binding(
             "ctrl+enter",
             "insert_newline",
@@ -49,6 +58,7 @@ class SessionScreen(Screen[None]):
         self._pending_quit = False
         self._pending_leave = False
         self._summary_open = False
+        self._confirmation: tuple[str, str, float] | None = None
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -81,6 +91,7 @@ class SessionScreen(Screen[None]):
         self.problem_id = self.session.next_problem()
         self._pending_quit = False
         self._pending_leave = False
+        self._confirmation = None
 
         question = self.query_one("#question", Static)
         answer = self.query_one("#answer", TextArea)
@@ -160,11 +171,29 @@ class SessionScreen(Screen[None]):
 
         while True:
             try:
-                is_correct = await self.session.submit_answer(
-                    problem_id,
-                    user_input,
-                    elapsed,
-                )
+                try:
+                    result = await self.session.submit_answer_result(
+                        problem_id,
+                        user_input,
+                        elapsed,
+                    )
+                except AnswerAcceptanceRequired as exc:
+                    if self._pending_quit or self._pending_leave:
+                        self._resolve_pending_navigation()
+                        return
+                    expected = await self.session.expected_answer(exc.problem_id)
+                    self._confirmation = (exc.problem_id, exc.user_input, elapsed)
+                    self.phase = "confirming"
+                    answer = self.query_one("#answer", TextArea)
+                    answer.disabled = True
+                    self.set_focus(None)
+                    self.query_one("#judging", LoadingIndicator).display = False
+                    self.query_one("#feedback", Static).update(
+                        "[red]Wrong answer[/red]\n"
+                        f"Expected: [yellow]{escape(expected)}[/yellow]\n\n"
+                        "[grey]Is this an acceptable answer? (y/n)[/grey]"
+                    )
+                    return
                 break
             except asyncio.CancelledError:
                 self._resolve_pending_navigation()
@@ -185,21 +214,81 @@ class SessionScreen(Screen[None]):
                 return
 
         self.phase = "feedback"
+        self._confirmation = None
         self.query_one("#judging", LoadingIndicator).display = False
-        await self._show_feedback(problem_id, is_correct, elapsed)
+        await self._show_feedback(problem_id, result.outcome, elapsed)
+        self._update_stats()
+        self._resolve_pending_navigation()
+
+    def action_accept_answer(self) -> None:
+        self._start_confirmation(True)
+
+    def action_reject_answer(self) -> None:
+        self._start_confirmation(False)
+
+    def _start_confirmation(self, accepted: bool) -> None:
+        if self.phase != "confirming" or self._confirmation is None:
+            return
+        self.phase = "judging"
+        self.query_one("#judging", LoadingIndicator).display = True
+        self.query_one("#feedback", Static).update("Saving...")
+        self.run_worker(
+            self._record_confirmation(accepted),
+            name="judge",
+            group="judge",
+            exclusive=True,
+        )
+
+    async def _record_confirmation(self, accepted: bool) -> None:
+        assert self._confirmation is not None
+        problem_id, user_input, elapsed = self._confirmation
+
+        while True:
+            try:
+                result = self.session.submit_answer_confirmation(
+                    problem_id,
+                    user_input,
+                    elapsed,
+                    accepted,
+                )
+                break
+            except asyncio.CancelledError:
+                self._resolve_pending_navigation()
+                return
+            except Exception as exc:  # noqa: BLE001
+                action = await self.app.push_screen_wait(JudgeErrorDialog(exc))
+                if action == "retry":
+                    continue
+                self.query_one("#judging", LoadingIndicator).display = False
+                if action == "skip":
+                    self.session.skip_problem(problem_id)
+                    self._confirmation = None
+                    await self._advance()
+                    self._resolve_pending_navigation()
+                    return
+                should_end = await self._open_summary()
+                if not should_end:
+                    self._restore_current_problem()
+                return
+
+        self._confirmation = None
+        self.phase = "feedback"
+        self.query_one("#judging", LoadingIndicator).display = False
+        await self._show_feedback(problem_id, result.outcome, elapsed)
         self._update_stats()
         self._resolve_pending_navigation()
 
     async def _show_feedback(
         self,
         problem_id: str,
-        is_correct: bool,
+        outcome: AttemptOutcome,
         elapsed: float,
     ) -> None:
         feedback = self.query_one("#feedback", Static)
-        if is_correct:
+        if outcome.is_correct:
             expansion = await self.session.expansion(problem_id)
-            message = f"[green]Accepted[/green]  {elapsed:.2f}s"
+            label = "Accepted (confirmed)" if outcome.user_confirmed else "Accepted"
+            message = f"[green]{label}[/green]  {elapsed:.2f}s"
             if expansion:
                 message += f"\nExpansion: {escape(expansion)}"
         else:
@@ -208,11 +297,14 @@ class SessionScreen(Screen[None]):
                 "[red]Wrong answer[/red]\n"
                 f"Expected: [yellow]{escape(expected)}[/yellow]"
             )
+            if outcome.user_confirmed:
+                message += "\nYou marked this answer as unacceptable."
         feedback.update(message)
 
     def _restore_current_problem(self) -> None:
         """Make the current problem answerable again after a recoverable error."""
 
+        self._confirmation = None
         self.phase = "ready"
         self._answer_started = time.perf_counter()
         self.query_one("#judging", LoadingIndicator).display = False

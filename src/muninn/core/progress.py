@@ -14,6 +14,19 @@ class ProgressStore(Protocol):
 
     def record_attempt(self, outcome: AttemptOutcome) -> ProblemStats: ...
 
+    def get_answer_decision(
+        self,
+        problem_id: ProblemId,
+        answer_key: str,
+    ) -> bool | None: ...
+
+    def record_answer_decision(
+        self,
+        problem_id: ProblemId,
+        answer_key: str,
+        accepted: bool,
+    ) -> None: ...
+
     def aggregate(self, problem_ids: list[ProblemId]) -> ProgressAggregate: ...
 
     def migrate_problem_ids(self, id_map: dict[str, str]) -> int: ...

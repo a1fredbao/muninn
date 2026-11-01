@@ -112,6 +112,11 @@ During a session:
   once it reaches half of the available session height.
 - Wait while Muninn shows `Judging...` when a plugin performs a slow
   synchronous or asynchronous answer check.
+- When an enabled plugin gets an answer that fails strict matching,
+  Muninn shows the expected answer and asks inline
+  `Is this an acceptable answer? (y/n)`. Press `y` to accept or `n` to
+  reject. The decision is saved in the pack's local progress database
+  for that problem and answer; accepted answers count as correct.
 - Press `Esc` to return to the pack library.
 - Press `Ctrl+C` to view the session summary and quit.
 - Press `Ctrl+Q` to show a reminder that `Ctrl+C` is now the quit

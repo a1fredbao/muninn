@@ -100,6 +100,7 @@ class AttemptOutcome:
     user_input: str
     is_correct: bool
     time_spent: float
+    user_confirmed: bool = False
 
 
 @dataclass(frozen=True, slots=True)

@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import ClassVar
 
 from textual.containers import Container
-from textual.widgets import DataTable, TextArea
+from textual.widgets import DataTable, Static, TextArea
 
 from muninn.plugin_api import BaseTrainingPlugin
 from muninn.services.manifest import PackManifest, PackSummary
@@ -139,6 +139,21 @@ class _FailingQuestionType(_QuestionType):
 class _FailingPlugin(BaseTrainingPlugin):
     def get_question_types(self):
         return [_FailingQuestionType()]
+
+
+class _AcceptanceQuestionType(_QuestionType):
+    allow_user_acceptance = True
+
+    def render_statement(self, problem_id):
+        return "Acceptance question"
+
+    def check_answer(self, problem_id, user_input):
+        return False
+
+
+class _AcceptancePlugin(BaseTrainingPlugin):
+    def get_question_types(self):
+        return [_AcceptanceQuestionType()]
 
 
 class _RenderFailingQuestionType(_FailingQuestionType):
@@ -311,6 +326,138 @@ def test_slow_sync_judging_does_not_block_pilot(tmp_path):
             assert ticks >= 5
             assert screen.phase == "feedback"
             assert session.stats().total_count == 1
+            await pilot.press("ctrl+c")
+            await pilot.pause()
+            assert isinstance(app.screen, SessionSummaryDialog)
+
+    asyncio.run(exercise())
+
+
+def test_user_acceptance_prompt_is_inline_and_accepts(tmp_path):
+    async def exercise():
+        session = await _make_session(
+            _AcceptancePlugin(),
+            tmp_path,
+            "acceptance",
+        )
+        app = MuninnApp(
+            package_manager=_PackageManager(),
+            config_store=UserConfigStore(str(tmp_path / "config.json")),
+        )
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause()
+            await app.push_screen(SessionScreen(session))
+            await pilot.pause()
+            screen = app.screen
+            assert isinstance(screen, SessionScreen)
+
+            answer = screen.query_one("#answer", TextArea)
+            answer.text = "paraphrase"
+            await pilot.press("enter")
+            for _ in range(100):
+                await pilot.pause(0.01)
+                if screen.phase == "confirming":
+                    break
+
+            assert screen.phase == "confirming"
+            feedback = screen.query_one("#feedback", Static)
+            rendered = str(feedback.render())
+            assert "Expected:" in rendered
+            assert "Is this an acceptable answer? (y/n)" in rendered
+            assert answer.disabled
+
+            await pilot.press("y")
+            for _ in range(100):
+                await pilot.pause(0.01)
+                if screen.phase == "feedback":
+                    break
+
+            assert screen.phase == "feedback"
+            rendered = str(feedback.render())
+            assert "Accepted (confirmed)" in rendered
+            assert session.stats().ac_count == 1
+
+            await pilot.press("ctrl+c")
+            await pilot.pause()
+            assert isinstance(app.screen, SessionSummaryDialog)
+
+    asyncio.run(exercise())
+
+
+def test_user_acceptance_prompt_rejects_with_n(tmp_path):
+    async def exercise():
+        session = await _make_session(
+            _AcceptancePlugin(),
+            tmp_path,
+            "acceptance-reject",
+        )
+        app = MuninnApp(
+            package_manager=_PackageManager(),
+            config_store=UserConfigStore(str(tmp_path / "config.json")),
+        )
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause()
+            await app.push_screen(SessionScreen(session))
+            await pilot.pause()
+            screen = app.screen
+            assert isinstance(screen, SessionScreen)
+
+            answer = screen.query_one("#answer", TextArea)
+            answer.text = "paraphrase"
+            await pilot.press("enter")
+            for _ in range(100):
+                await pilot.pause(0.01)
+                if screen.phase == "confirming":
+                    break
+
+            assert screen.phase == "confirming"
+            await pilot.press("n")
+            for _ in range(100):
+                await pilot.pause(0.01)
+                if screen.phase == "feedback":
+                    break
+
+            assert screen.phase == "feedback"
+            feedback = screen.query_one("#feedback", Static)
+            rendered = str(feedback.render())
+            assert "Wrong answer" in rendered
+            assert "You marked this answer as unacceptable." in rendered
+            assert session.stats().ac_count == 0
+            assert session.stats().total_count == 1
+
+            await pilot.press("ctrl+c")
+            await pilot.pause()
+            assert isinstance(app.screen, SessionSummaryDialog)
+
+    asyncio.run(exercise())
+
+
+def test_y_types_normally_before_confirmation(tmp_path):
+    async def exercise():
+        session = await _make_session(
+            _AcceptancePlugin(),
+            tmp_path,
+            "acceptance-typing",
+        )
+        app = MuninnApp(
+            package_manager=_PackageManager(),
+            config_store=UserConfigStore(str(tmp_path / "config.json")),
+        )
+        async with app.run_test(size=(100, 30)) as pilot:
+            await pilot.pause()
+            await app.push_screen(SessionScreen(session))
+            await pilot.pause()
+            screen = app.screen
+            assert isinstance(screen, SessionScreen)
+
+            answer = screen.query_one("#answer", TextArea)
+            answer.focus()
+            await pilot.press("y")
+            await pilot.pause()
+
+            assert screen.phase == "ready"
+            assert answer.text == "y"
+
             await pilot.press("ctrl+c")
             await pilot.pause()
             assert isinstance(app.screen, SessionSummaryDialog)

@@ -4,13 +4,19 @@ import asyncio
 import time
 from pathlib import Path
 
+import pytest
+
 from muninn.plugin_api import BaseTrainingPlugin
 from muninn.services.manifest import PackManifest
 from muninn.services.plugin_loader import (
     InProcessPluginAdapter,
     LoadedPlugin,
 )
-from muninn.services.training_session import QuestionRoute, TrainingSession
+from muninn.services.training_session import (
+    AnswerAcceptanceRequired,
+    QuestionRoute,
+    TrainingSession,
+)
 
 
 class _QuestionType:
@@ -18,9 +24,10 @@ class _QuestionType:
     label = "Questions"
     description = "Test question type"
 
-    def __init__(self, matcher, problem_ids=None):
+    def __init__(self, matcher, problem_ids=None, allow_user_acceptance=False):
         self.matcher = matcher
         self.ids = problem_ids or ["1"]
+        self.allow_user_acceptance = allow_user_acceptance
 
     def get_all_problem_ids(self):
         return self.ids
@@ -43,8 +50,12 @@ class _QuestionType:
 
 
 class _Plugin(BaseTrainingPlugin):
-    def __init__(self, matcher, problem_ids=None):
-        self.question_type = _QuestionType(matcher, problem_ids)
+    def __init__(self, matcher, problem_ids=None, allow_user_acceptance=False):
+        self.question_type = _QuestionType(
+            matcher,
+            problem_ids,
+            allow_user_acceptance,
+        )
         super().__init__("")
 
     def get_question_types(self):
@@ -156,4 +167,149 @@ def test_skip_problem_removes_it_from_session(tmp_path):
 
     assert problem_id not in remaining
     assert session.stats().total_problems == 1
+    session.close()
+
+
+def test_user_acceptance_is_required_after_strict_mismatch(tmp_path):
+    plugin = _Plugin(
+        lambda problem_id, user_input: False,
+        allow_user_acceptance=True,
+    )
+    session = asyncio.run(_session(plugin, tmp_path, "acceptance-required"))
+    problem_id = session.next_problem()
+    assert problem_id is not None
+
+    with pytest.raises(AnswerAcceptanceRequired):
+        asyncio.run(session.submit_answer_result(problem_id, "同义答案", 0.5))
+
+    assert session.stats().total_count == 0
+    session.close()
+
+
+def test_strict_match_skips_user_acceptance(tmp_path):
+    plugin = _Plugin(
+        lambda problem_id, user_input: True,
+        allow_user_acceptance=True,
+    )
+    session = asyncio.run(_session(plugin, tmp_path, "acceptance-strict"))
+    problem_id = session.next_problem()
+    assert problem_id is not None
+
+    result = asyncio.run(session.submit_answer_result(problem_id, "correct", 0.5))
+
+    assert result.outcome.is_correct
+    assert not result.outcome.user_confirmed
+    session.close()
+
+
+def test_accepted_answer_is_persisted_and_reused(tmp_path):
+    plugin = _Plugin(
+        lambda problem_id, user_input: False,
+        allow_user_acceptance=True,
+    )
+    session = asyncio.run(_session(plugin, tmp_path, "acceptance-accept"))
+    problem_id = session.next_problem()
+    assert problem_id is not None
+
+    result = session.submit_answer_confirmation(
+        problem_id,
+        "同义答案",
+        0.5,
+        True,
+    )
+
+    assert result.outcome.is_correct
+    assert result.outcome.user_confirmed
+    assert session.stats().ac_count == 1
+    assert session.stats().total_count == 1
+    session.close()
+
+    second_plugin = _Plugin(
+        lambda problem_id, user_input: False,
+        allow_user_acceptance=True,
+    )
+    second_session = asyncio.run(_session(second_plugin, tmp_path, "acceptance-accept"))
+    second_problem_id = second_session.next_problem()
+    assert second_problem_id is not None
+
+    second_result = asyncio.run(
+        second_session.submit_answer_result(
+            second_problem_id,
+            "同义答案",
+            0.5,
+        )
+    )
+
+    assert second_result.outcome.is_correct
+    assert second_result.outcome.user_confirmed
+    second_session.close()
+
+
+def test_rejected_answer_is_persisted_and_reused(tmp_path):
+    plugin = _Plugin(
+        lambda problem_id, user_input: False,
+        allow_user_acceptance=True,
+    )
+    session = asyncio.run(_session(plugin, tmp_path, "acceptance-reject"))
+    problem_id = session.next_problem()
+    assert problem_id is not None
+
+    result = session.submit_answer_confirmation(
+        problem_id,
+        "错误答案",
+        0.5,
+        False,
+    )
+
+    assert not result.outcome.is_correct
+    assert result.outcome.user_confirmed
+    assert session.stats().ac_count == 0
+    assert session.stats().total_count == 1
+    session.close()
+
+    second_plugin = _Plugin(
+        lambda problem_id, user_input: False,
+        allow_user_acceptance=True,
+    )
+    second_session = asyncio.run(_session(second_plugin, tmp_path, "acceptance-reject"))
+    second_problem_id = second_session.next_problem()
+    assert second_problem_id is not None
+
+    second_result = asyncio.run(
+        second_session.submit_answer_result(
+            second_problem_id,
+            "错误答案",
+            0.5,
+        )
+    )
+
+    assert not second_result.outcome.is_correct
+    assert second_result.outcome.user_confirmed
+    second_session.close()
+
+
+def test_plugin_without_user_acceptance_records_wrong(tmp_path):
+    plugin = _Plugin(lambda problem_id, user_input: False)
+    session = asyncio.run(_session(plugin, tmp_path, "acceptance-disabled"))
+    problem_id = session.next_problem()
+    assert problem_id is not None
+
+    result = asyncio.run(session.submit_answer_result(problem_id, "错误答案", 0.5))
+
+    assert not result.outcome.is_correct
+    assert not result.outcome.user_confirmed
+    session.close()
+
+
+def test_noninteractive_submit_treats_pending_confirmation_as_wrong(tmp_path):
+    plugin = _Plugin(
+        lambda problem_id, user_input: False,
+        allow_user_acceptance=True,
+    )
+    session = asyncio.run(_session(plugin, tmp_path, "acceptance-compat"))
+    problem_id = session.next_problem()
+    assert problem_id is not None
+
+    assert not asyncio.run(session.submit_answer(problem_id, "同义答案", 0.5))
+    assert session.stats().total_count == 1
     session.close()
