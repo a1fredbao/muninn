@@ -87,6 +87,16 @@ class TestStateManager:
         assert stats.total_count == 1
         assert stats.total_ac_time == 1.25
 
+    def test_answer_decision_defaults_to_none(self, state_manager):
+        assert state_manager.get_answer_decision(ProblemId("p1"), "answer") is None
+
+    def test_answer_decision_is_persisted_and_updated(self, state_manager):
+        state_manager.record_answer_decision(ProblemId("p1"), "answer", True)
+        assert state_manager.get_answer_decision(ProblemId("p1"), "answer") is True
+
+        state_manager.record_answer_decision(ProblemId("p1"), "answer", False)
+        assert state_manager.get_answer_decision(ProblemId("p1"), "answer") is False
+
     def test_migrates_and_merges_legacy_problem_ids(self, state_manager):
         state_manager.update_stats("legacy", is_ac=True, time_spent=1.0)
         state_manager.update_stats("stable", is_ac=False, time_spent=2.0)

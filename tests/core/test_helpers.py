@@ -197,6 +197,22 @@ class _FilteredDataPlugin(DataPlugin):
         return record["v"] != "b"
 
 
+class _AcceptanceDataPlugin(DataPlugin):
+    QUESTION_TYPES: ClassVar[list[QuestionTypeSpec]] = [
+        QuestionTypeSpec(
+            key="acceptance",
+            label="acceptance",
+            statement=lambda record: record["q"],
+            answer=lambda record: record["a"],
+            matcher=Matchers.exact("a"),
+            allow_user_acceptance=True,
+        ),
+    ]
+
+    def load_records(self):
+        return [{"id": "q1", "q": "Q1", "a": "A1"}]
+
+
 class TestDataPlugin:
     def test_get_all_problem_ids(self, tmp_workspace):
         p = _initialize(_SimpleDataPlugin(tmp_workspace), tmp_workspace)
@@ -236,6 +252,18 @@ class TestDataPlugin:
         ids = question_type.get_all_problem_ids()
         assert len(ids) == 2
         assert ids == ["a", "c"]
+
+    def test_question_type_can_enable_user_acceptance(self, tmp_workspace):
+        p = _initialize(_AcceptanceDataPlugin(tmp_workspace), tmp_workspace)
+        question_type = p.get_question_types()[0]
+
+        assert question_type.allow_user_acceptance
+
+    def test_user_acceptance_is_disabled_by_default(self, tmp_workspace):
+        p = _initialize(_SimpleDataPlugin(tmp_workspace), tmp_workspace)
+        question_type = p.get_question_types()[0]
+
+        assert not question_type.allow_user_acceptance
 
 
 # -----------------------------------------------------------------------

@@ -23,6 +23,7 @@ class Plugin(DataPlugin):
             statement=lambda el: f"Element: {el['sym']}",
             answer=lambda el: el["name"],
             matcher=Matchers.case_insensitive("name"),
+            allow_user_acceptance=True,
         ),
         QuestionTypeSpec(
             key="name-to-number",
@@ -99,3 +100,10 @@ Reordering records must not change progress.
 | `matcher`   | `(dict, str) -> bool` | Checks user input. |
 | `expand`    | `(dict) -> str`       | Optional expansion shown after a correct answer. |
 | `metadata`  | `(dict) -> object`    | Optional scheduling metadata. |
+| `allow_user_acceptance` | `bool` | Ask the user to confirm a strict mismatch. |
+
+When `allow_user_acceptance` is `True`, Muninn shows the user's answer
+and the expected answer after `matcher` rejects it, then asks whether the
+answer is acceptable. The decision is stored per problem and answer:
+accepted answers count as correct, rejected answers remain wrong, and
+repeating the same answer reuses the stored decision.

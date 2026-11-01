@@ -316,7 +316,8 @@ from muninn.core.helpers import DataPlugin, QuestionTypeSpec
 
 class Plugin(DataPlugin):
     QUESTION_TYPES: ClassVar[list[QuestionTypeSpec]] = [
-        # Define question directions here.
+        # Define question directions here. Set allow_user_acceptance=True
+        # to ask the user to confirm answers rejected by strict matching.
     ]
 
     def load_records(self) -> list[dict]:

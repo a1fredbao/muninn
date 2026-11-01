@@ -115,6 +115,8 @@ def _dispatch(
                 )
             )
         )
+    if method == "supports_user_acceptance":
+        return bool(getattr(question_type, "allow_user_acceptance", False))
     if method == "get_expected_display":
         return str(
             _run_maybe_async(question_type.get_expected_display(params["problem_id"]))

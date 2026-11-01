@@ -10,6 +10,7 @@ from ..core.progress import ProgressStore
 from ..core.routed_store import RoutedProgressStore
 from ..core.scheduler import Scheduler
 from ..domain import (
+    AttemptResult,
     ProblemId,
     ProblemRef,
     SchedulingContext,
@@ -17,7 +18,7 @@ from ..domain import (
 from ..keys import pack_key as make_pack_key
 from ..keys import problem_key as make_problem_key
 from ..keys import question_type_key as make_question_type_key
-from .training import TrainingCoordinator
+from .training import AnswerEvaluation, TrainingCoordinator
 
 
 @dataclass(frozen=True, slots=True)
@@ -28,6 +29,21 @@ class QuestionRoute:
     question_type_id: str
     plugin: Any
     weight: float = 1.0
+
+
+class AnswerAcceptanceRequired(Exception):
+    """Raised when the host must ask the user whether an answer is acceptable."""
+
+    def __init__(
+        self,
+        problem_id: str,
+        user_input: str,
+        evaluation: AnswerEvaluation,
+    ) -> None:
+        super().__init__("User acceptance is required for this answer.")
+        self.problem_id = problem_id
+        self.user_input = user_input
+        self.evaluation = evaluation
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,16 +171,77 @@ class TrainingSession:
         user_input: str,
         time_spent: float,
     ) -> bool:
-        result = await self.training_coordinator.record_attempt(
+        try:
+            result = await self.submit_answer_result(
+                problem_id,
+                user_input,
+                time_spent,
+            )
+        except AnswerAcceptanceRequired:
+            result = self._record_evaluation(
+                problem_id,
+                user_input,
+                time_spent,
+                AnswerEvaluation(False),
+            )
+        return result.outcome.is_correct
+
+    async def submit_answer_result(
+        self,
+        problem_id: str,
+        user_input: str,
+        time_spent: float,
+    ) -> AttemptResult:
+        evaluation = await self.training_coordinator.evaluate_answer(
+            ProblemId(problem_id),
+            user_input,
+        )
+        if evaluation.needs_user_acceptance:
+            raise AnswerAcceptanceRequired(problem_id, user_input, evaluation)
+        return self._record_evaluation(
+            problem_id,
+            user_input,
+            time_spent,
+            evaluation,
+        )
+
+    def submit_answer_confirmation(
+        self,
+        problem_id: str,
+        user_input: str,
+        time_spent: float,
+        accepted: bool,
+    ) -> AttemptResult:
+        result = self.training_coordinator.record_user_decision(
             ProblemId(problem_id),
             user_input,
             time_spent,
+            accepted,
         )
+        self._update_after_attempt(result)
+        return result
+
+    def _record_evaluation(
+        self,
+        problem_id: str,
+        user_input: str,
+        time_spent: float,
+        evaluation: AnswerEvaluation,
+    ) -> AttemptResult:
+        result = self.training_coordinator.record_evaluation(
+            ProblemId(problem_id),
+            user_input,
+            time_spent,
+            evaluation,
+        )
+        self._update_after_attempt(result)
+        return result
+
+    def _update_after_attempt(self, result: AttemptResult) -> None:
         self.combo = self.combo + 1 if result.outcome.is_correct else 0
         self._progress = self.progress_store.aggregate(
             self.scheduler.active_problem_ids
         )
-        return result.outcome.is_correct
 
     async def expected_answer(self, problem_id: str) -> str:
         problem = self._problem(problem_id)

@@ -14,8 +14,16 @@ from textual.containers import Container, Vertical
 from textual.screen import Screen
 from textual.widgets import Footer, Header, LoadingIndicator, Static, TextArea
 
-from ...services.training_session import TrainingSession
-from .dialogs import JudgeErrorDialog, SessionSummaryDialog
+from ...domain import AttemptOutcome
+from ...services.training_session import (
+    AnswerAcceptanceRequired,
+    TrainingSession,
+)
+from .dialogs import (
+    AnswerAcceptanceDialog,
+    JudgeErrorDialog,
+    SessionSummaryDialog,
+)
 
 
 class SessionScreen(Screen[None]):
@@ -160,11 +168,27 @@ class SessionScreen(Screen[None]):
 
         while True:
             try:
-                is_correct = await self.session.submit_answer(
-                    problem_id,
-                    user_input,
-                    elapsed,
-                )
+                try:
+                    result = await self.session.submit_answer_result(
+                        problem_id,
+                        user_input,
+                        elapsed,
+                    )
+                except AnswerAcceptanceRequired as exc:
+                    expected = await self.session.expected_answer(exc.problem_id)
+                    accepted = await self.app.push_screen_wait(
+                        AnswerAcceptanceDialog(exc.user_input, expected)
+                    )
+                    if accepted is None:
+                        self._restore_current_problem()
+                        self._resolve_pending_navigation()
+                        return
+                    result = self.session.submit_answer_confirmation(
+                        exc.problem_id,
+                        exc.user_input,
+                        elapsed,
+                        accepted,
+                    )
                 break
             except asyncio.CancelledError:
                 self._resolve_pending_navigation()
@@ -186,20 +210,21 @@ class SessionScreen(Screen[None]):
 
         self.phase = "feedback"
         self.query_one("#judging", LoadingIndicator).display = False
-        await self._show_feedback(problem_id, is_correct, elapsed)
+        await self._show_feedback(problem_id, result.outcome, elapsed)
         self._update_stats()
         self._resolve_pending_navigation()
 
     async def _show_feedback(
         self,
         problem_id: str,
-        is_correct: bool,
+        outcome: AttemptOutcome,
         elapsed: float,
     ) -> None:
         feedback = self.query_one("#feedback", Static)
-        if is_correct:
+        if outcome.is_correct:
             expansion = await self.session.expansion(problem_id)
-            message = f"[green]Accepted[/green]  {elapsed:.2f}s"
+            label = "Accepted (confirmed)" if outcome.user_confirmed else "Accepted"
+            message = f"[green]{label}[/green]  {elapsed:.2f}s"
             if expansion:
                 message += f"\nExpansion: {escape(expansion)}"
         else:
@@ -208,6 +233,8 @@ class SessionScreen(Screen[None]):
                 "[red]Wrong answer[/red]\n"
                 f"Expected: [yellow]{escape(expected)}[/yellow]"
             )
+            if outcome.user_confirmed:
+                message += "\nYou marked this answer as unacceptable."
         feedback.update(message)
 
     def _restore_current_problem(self) -> None:

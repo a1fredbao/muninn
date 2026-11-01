@@ -259,6 +259,13 @@ class WorkerPluginAdapter:
             )
         )
 
+    async def supports_user_acceptance(self, problem: ProblemRef) -> bool:
+        result = await self._request(
+            "supports_user_acceptance",
+            question_type=problem.question_type_id,
+        )
+        return bool(result)
+
     async def get_expected_display(self, problem: ProblemRef) -> str:
         return str(
             await self._request(
@@ -386,6 +393,10 @@ class InProcessPluginAdapter:
                 user_input,
             )
         )
+
+    async def supports_user_acceptance(self, problem: ProblemRef) -> bool:
+        question_type = self._question_type(problem)
+        return bool(getattr(question_type, "allow_user_acceptance", False))
 
     async def get_expected_display(self, problem: ProblemRef) -> str:
         question_type = self._question_type(problem)

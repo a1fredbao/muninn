@@ -55,6 +55,7 @@ class QuestionType:
     key = "questions"
     label = "Questions"
     description = "Test questions"
+    allow_user_acceptance = True
 
     def get_all_problem_ids(self):
         self.ids = ["1", "2"]
@@ -75,7 +76,6 @@ class QuestionType:
 
     def get_expand_info(self, problem_id):
         return ""
-
 
 class Plugin(BaseTrainingPlugin):
     def load_data(self):
@@ -333,6 +333,7 @@ class TestListingAndLoading:
                 ]
                 assert await adapter.render_statement(_ref("mypack")) == "Q1"
                 assert await adapter.check_answer(_ref("mypack"), "1")
+                assert await adapter.supports_user_acceptance(_ref("mypack"))
             finally:
                 await adapter.aclose()
 

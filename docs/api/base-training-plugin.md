@@ -44,8 +44,25 @@ class Plugin(BaseTrainingPlugin):
 | `describe_problem()` | Return scheduling metadata such as tags, difficulty, and estimated time. |
 | `render_statement()` | Render the prompt. |
 | `check_answer()` | Judge an attempt. |
+| `allow_user_acceptance` | Optional flag: ask the user to confirm a strict mismatch. |
 | `get_expected_display()` | Return the expected answer. |
 | `get_expand_info()` | Return optional post-answer guidance. |
+
+## Optional user acceptance
+
+If an exact matcher may reject a valid paraphrase, set
+`allow_user_acceptance = True` on the question type. When
+`check_answer()` returns `False`, Muninn shows the user's answer and the
+expected answer, then asks the user to confirm whether it is acceptable.
+
+```python
+class QuestionType:
+    allow_user_acceptance = True
+```
+
+The confirmation decision is stored per problem and answer. Accepted
+answers count as correct; rejected answers remain wrong. Repeating the
+same answer reuses the stored decision instead of asking again.
 
 The host hashes the pack ID, question-type key, and local problem ID into
 an opaque global problem key. Group configuration stores these hashes
