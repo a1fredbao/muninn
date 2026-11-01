@@ -52,8 +52,9 @@ class Plugin(BaseTrainingPlugin):
 
 If an exact matcher may reject a valid paraphrase, set
 `allow_user_acceptance = True` on the question type. When
-`check_answer()` returns `False`, Muninn shows the user's answer and the
-expected answer, then asks the user to confirm whether it is acceptable.
+`check_answer()` returns `False`, Muninn shows the expected answer and
+asks in the feedback panel whether the submitted answer is acceptable.
+Press `y` to accept or `n` to reject.
 
 ```python
 class QuestionType:

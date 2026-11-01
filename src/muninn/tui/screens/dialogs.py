@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import ClassVar, Literal
 
-from rich.markup import escape
 from textual.app import ComposeResult
 from textual.binding import BindingType
 from textual.containers import Container, Horizontal
@@ -38,44 +37,6 @@ class ConfirmDialog(ModalScreen[bool]):
 
     def action_cancel(self) -> None:
         self.dismiss(False)
-
-
-class AnswerAcceptanceDialog(ModalScreen[bool | None]):
-    """Ask the user whether a strict-mismatch answer is acceptable."""
-
-    BINDINGS: ClassVar[list[BindingType]] = [("escape", "cancel", "Cancel")]
-
-    def __init__(self, user_answer: str, expected: str) -> None:
-        super().__init__()
-        self.user_answer = user_answer
-        self.expected = expected
-
-    def compose(self) -> ComposeResult:
-        with Container(classes="dialog"):
-            yield Label("Answer check", classes="dialog-title")
-            yield Static(
-                "Your answer:\n"
-                f"{escape(self.user_answer)}\n\n"
-                "Expected:\n"
-                f"{escape(self.expected)}\n\n"
-                "Is your answer acceptable?",
-                id="acceptance-message",
-            )
-            with Horizontal(classes="dialog-actions"):
-                yield Button("Cancel", id="cancel")
-                yield Button("No, reject", id="reject", variant="error")
-                yield Button("Yes, accept", id="accept", variant="primary")
-
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        if event.button.id == "accept":
-            self.dismiss(True)
-        elif event.button.id == "reject":
-            self.dismiss(False)
-        else:
-            self.dismiss(None)
-
-    def action_cancel(self) -> None:
-        self.dismiss(None)
 
 
 class InstallDialog(ModalScreen[str | None]):

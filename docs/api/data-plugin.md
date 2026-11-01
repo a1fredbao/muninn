@@ -102,8 +102,9 @@ Reordering records must not change progress.
 | `metadata`  | `(dict) -> object`    | Optional scheduling metadata. |
 | `allow_user_acceptance` | `bool` | Ask the user to confirm a strict mismatch. |
 
-When `allow_user_acceptance` is `True`, Muninn shows the user's answer
-and the expected answer after `matcher` rejects it, then asks whether the
-answer is acceptable. The decision is stored per problem and answer:
+When `allow_user_acceptance` is `True`, Muninn shows the expected answer
+after `matcher` rejects it, then asks inline whether the answer is
+acceptable. Press `y` to accept or `n` to reject.
+The decision is stored per problem and answer:
 accepted answers count as correct, rejected answers remain wrong, and
 repeating the same answer reuses the stored decision.
