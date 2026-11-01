@@ -223,3 +223,6 @@ site/
 # Agent files
 .agent/
 .agents/
+
+# Local-only training packs
+local/
